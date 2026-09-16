@@ -30,6 +30,9 @@ ROOT = Path(__file__).resolve().parent.parent
 LEXICON = ROOT / "lexicon"
 CORPUS_DIR = ROOT / "data" / "corpus"
 
+# השכבות שנחשבות "רבניות" לצורך העדפת צורה.
+RABBINIC_LAYERS = ("mishnaic", "aramaic", "liturgy")
+
 UNAMBIGUOUS_RATIO = 0.98
 UNAMBIGUOUS_MIN_COUNT = 3
 BIGRAM_MIN_COUNT = 2
@@ -45,6 +48,9 @@ def build(corpus_dir: Path, out_dir: Path, *, min_count: int = 2,
     bigrams: dict[tuple[str, str], Counter] = defaultdict(Counter)
     name_counts: Counter = Counter()
     layer_forms: dict[str, Counter] = defaultdict(Counter)
+    # ספירה נפרדת לשכבות הרבניות. הקורפוס נשלט על ידי התנ"ך, ולצורה
+    # מקראית (ובמיוחד צורת הפסק) אין בהכרח תוקף בפרוזה רבנית.
+    rabbinic_forms: dict[str, Counter] = defaultdict(Counter)
 
     sentences = 0
     tokens = 0
@@ -61,6 +67,8 @@ def build(corpus_dir: Path, out_dir: Path, *, min_count: int = 2,
             tokens += 1
             forms[skel][form] += 1
             layer_forms[row["layer"]][skel] += 1
+            if row["layer"] in RABBINIC_LAYERS:
+                rabbinic_forms[skel][form] += 1
             bigrams[(prev_skel, skel)][form] += 1
             if prev_skel in NAME_TRIGGERS:
                 name_counts[skel] += 1
@@ -91,13 +99,27 @@ def build(corpus_dir: Path, out_dir: Path, *, min_count: int = 2,
             category = "context" if skel in resolvable_by_bigram else "ambiguous"
 
         counts[category] += 1
-        entries[skel] = {
+        entry = {
             "category": category,
             "best": best_form,
             "count": total,
             "ratio": round(ratio, 4),
             "variants": [[f, n] for f, n in variants.most_common(MAX_VARIANTS_STORED)],
         }
+        # צורה רבנית נשמרת רק כשהיא נחרצת בשכבות הרבניות עצמן ושונה
+        # מהצורה הכללית. אחרת אין לה מה להוסיף.
+        rab = rabbinic_forms.get(skel)
+        if rab:
+            rab_total = sum(rab.values())
+            rab_form, rab_n = rab.most_common(1)[0]
+            if (
+                rab_form != best_form
+                and rab_total >= UNAMBIGUOUS_MIN_COUNT
+                and rab_n / rab_total >= UNAMBIGUOUS_RATIO
+            ):
+                entry["rabbinic"] = rab_form
+                counts["rabbinic_override"] += 1
+        entries[skel] = entry
         if category == "ambiguous":
             review.append(
                 {
@@ -172,17 +194,21 @@ def _bigram_decides(variants: Counter) -> str | None:
 class Lexicon:
     """הלקסיקון כפי שהמנוע משתמש בו."""
 
-    def __init__(self, forms: dict, bigrams: dict[str, str], names: set[str]):
+    def __init__(self, forms: dict, bigrams: dict[str, str], names: set[str],
+                 *, prefer_rabbinic: bool = True):
         self.meta = forms.get("meta", {})
         self.forms: dict[str, dict] = forms.get("forms", {})
         self.bigrams = bigrams
         self.names = names
+        # הקורפוס נשלט על ידי התנ"ך. בטקסט רבני עדיפה הצורה של השכבות
+        # הרבניות, כשהיא קיימת ונחרצת.
+        self.prefer_rabbinic = prefer_rabbinic
 
     @classmethod
-    def load(cls, path: Path = LEXICON) -> "Lexicon":
+    def load(cls, path: Path = LEXICON, *, prefer_rabbinic: bool = True) -> "Lexicon":
         forms_path = path / "forms.json"
         if not forms_path.exists():
-            return cls({}, {}, set())
+            return cls({}, {}, set(), prefer_rabbinic=prefer_rabbinic)
         forms = json.loads(forms_path.read_text(encoding="utf-8"))
         bigrams_path = path / "bigrams.json"
         bigrams = (
@@ -196,11 +222,15 @@ class Lexicon:
             if names_path.exists()
             else set()
         )
-        return cls(forms, bigrams, names)
+        return cls(forms, bigrams, names, prefer_rabbinic=prefer_rabbinic)
 
     def unambiguous(self, skeleton: str) -> str | None:
         e = self.forms.get(skeleton)
-        if e and e["category"] == "unambiguous":
+        if not e:
+            return None
+        if self.prefer_rabbinic and "rabbinic" in e:
+            return e["rabbinic"]
+        if e["category"] == "unambiguous":
             return e["best"]
         return None
 
@@ -213,7 +243,11 @@ class Lexicon:
 
     def most_common(self, skeleton: str) -> str | None:
         e = self.forms.get(skeleton)
-        return e["best"] if e else None
+        if not e:
+            return None
+        if self.prefer_rabbinic and "rabbinic" in e:
+            return e["rabbinic"]
+        return e["best"]
 
     def __len__(self) -> int:
         return len(self.forms)

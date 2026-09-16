@@ -316,7 +316,7 @@ def _load_json(path: Path, default):
 # --- בונה מנועים לפי שם, ל-evaluate.py --------------------------------
 
 
-def build_engine(spec: str) -> Callable[[str], str]:
+def build_engine(spec: str, lexicon_dir: Path = LEXICON) -> Callable[[str], str]:
     """`null` | `lexicon` | `quotes` | `lexicon+quotes` | `dictabert` | `full`
     | `trained:<path>`.
 
@@ -325,17 +325,17 @@ def build_engine(spec: str) -> Callable[[str], str]:
     if spec == "null":
         return _with_batch(lambda t: t, lambda ts: list(ts))
     if spec == "lexicon":
-        eng = Engine.load(with_quotes=False)
+        eng = Engine.load(lexicon_dir=lexicon_dir, with_quotes=False)
     elif spec == "quotes":
-        eng = Engine(quotes=QuoteIndex.load())
+        eng = Engine(quotes=QuoteIndex.load(lexicon_dir / "quotes.json"))
     elif spec == "lexicon+quotes":
-        eng = Engine.load()
+        eng = Engine.load(lexicon_dir=lexicon_dir)
     elif spec == "dictabert":
         eng = Engine(model=DictaBertBackend())
     elif spec == "full":
-        eng = Engine.load(with_model=_MODEL_ID)
+        eng = Engine.load(lexicon_dir=lexicon_dir, with_model=_MODEL_ID)
     elif spec.startswith("trained:"):
-        eng = Engine.load(with_model=spec.split(":", 1)[1])
+        eng = Engine.load(lexicon_dir=lexicon_dir, with_model=spec.split(":", 1)[1])
     else:
         raise ValueError(f"מנוע לא מוכר: {spec}")
     return _with_batch(eng.nikud, eng.nikud_batch)

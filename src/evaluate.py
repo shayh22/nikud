@@ -281,8 +281,8 @@ def render_report(results: list[Result], *, title: str, manifest: dict,
     return "\n".join(lines) + "\n"
 
 
-def load_homograph_skeletons() -> set[str]:
-    path = ROOT / "lexicon" / "forms.json"
+def load_homograph_skeletons(lexicon_dir: Path = ROOT / "lexicon") -> set[str]:
+    path = lexicon_dir / "forms.json"
     if not path.exists():
         return set()
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -293,8 +293,8 @@ def load_homograph_skeletons() -> set[str]:
     }
 
 
-def load_names() -> set[str]:
-    path = ROOT / "lexicon" / "names.json"
+def load_names(lexicon_dir: Path = ROOT / "lexicon") -> set[str]:
+    path = lexicon_dir / "names.json"
     if not path.exists():
         return set()
     return set(json.loads(path.read_text(encoding="utf-8")))
@@ -308,23 +308,25 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out", type=Path, default=None, help="קובץ md לכתיבה")
     p.add_argument("--title", default="דוח הערכה")
     p.add_argument("--baseline", type=Path, default=REPORTS / "baseline.json")
+    p.add_argument("--lexicon-dir", type=Path, default=ROOT / "lexicon")
+    p.add_argument("--eval-dir", type=Path, default=ROOT / "data" / "eval")
     args = p.parse_args(argv)
 
-    if not build_eval.verify():
+    if not build_eval.verify(args.eval_dir):
         print("סט ההערכה חסר או שה-hash לא תואם. הרץ src/build_eval.py.", file=sys.stderr)
         return 2
-    manifest = json.loads((ROOT / "data" / "eval" / "MANIFEST.json").read_text(encoding="utf-8"))
-    dataset = build_eval.load()
+    manifest = json.loads((args.eval_dir / "MANIFEST.json").read_text(encoding="utf-8"))
+    dataset = build_eval.load(args.eval_dir)
     if args.limit:
         dataset = dataset[: args.limit]
 
     import engine as engine_mod  # ייבוא מאוחר — engine טוען משקולות
 
-    homos = load_homograph_skeletons()
-    names = load_names()
+    homos = load_homograph_skeletons(args.lexicon_dir)
+    names = load_names(args.lexicon_dir)
     results = []
     for spec in args.engines:
-        fn = engine_mod.build_engine(spec)
+        fn = engine_mod.build_engine(spec, args.lexicon_dir)
         print(f"מריץ {spec} על {len(dataset)} משפטים…", file=sys.stderr)
         results.append(
             evaluate(fn, dataset, name=spec, homograph_skeletons=homos, extra_names=names)
