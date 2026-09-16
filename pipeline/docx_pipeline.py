@@ -22,6 +22,18 @@ from engine import Engine  # noqa: E402
 from hebrew import identity_diff, is_hebrew, normalize, strip_nikud  # noqa: E402
 
 
+def all_runs(para) -> list:
+    """כל ה-runs של הפסקה, כולל אלה שמקוננים בתוך קישור.
+
+    `paragraph.runs` מחזיר רק ילדים ישירים. טקסט שיושב בתוך `w:hyperlink`
+    נספר ב-`paragraph.text` אבל לא ברשימה הזו, ומי שמסתמך עליה כותב את
+    הפסקה פעמיים — פעם ב-run הראשון ופעם בקישור שנשאר כמות שהוא.
+    """
+    from docx.text.run import Run
+
+    return [Run(r, para) for r in para._p.xpath(".//w:r")]
+
+
 def redistribute(vocalized: str, run_texts: list[str]) -> list[str]:
     """מחלק טקסט מנוקד חזרה ל-runs לפי אורך השלד של כל run.
 
@@ -31,7 +43,7 @@ def redistribute(vocalized: str, run_texts: list[str]) -> list[str]:
     out: list[str] = []
     pos = 0
     for original in run_texts:
-        need = len(strip_nikud(original))
+        need = len(strip_nikud(normalize(original)))
         taken = 0
         start = pos
         while pos < len(vocalized) and taken < need:
@@ -61,6 +73,7 @@ def process(in_path: Path, out_path: Path, *, engine: Engine,
     sources: Counter = Counter()
     unresolved: Counter = Counter()
     failures: list[dict] = []
+    skipped: list[dict] = []
     samples: list[dict] = []
 
     # --- שלב א': אילו פסקאות בכלל מנוקדות -------------------------------
@@ -112,20 +125,30 @@ def process(in_path: Path, out_path: Path, *, engine: Engine,
             failures.append({"paragraph": idx, "text": text[:80]})
             continue
 
-        run_texts = [normalize(r.text) for r in para.runs]
-        if run_texts and "".join(run_texts) == normalized:
-            pieces = redistribute(result.text, run_texts)
-            if "".join(strip_nikud(p) for p in pieces) != strip_nikud(normalized):
-                failures.append({"paragraph": idx, "reason": "חלוקת runs נכשלה"})
-                continue
-            for run, piece in zip(para.runs, pieces):
-                run.text = piece
-        elif para.runs:
-            # עיצוב מפוצל שאי אפשר למפות בבטחה — הכול נכנס ל-run הראשון.
-            para.runs[0].text = result.text
-            for run in para.runs[1:]:
-                run.text = ""
-            stats["paragraphs_flattened"] += 1
+        runs = all_runs(para)
+        run_texts = [r.text for r in runs]
+        if not runs or "".join(run_texts) != text:
+            # אי אפשר למפות את הפסקה ל-runs שלה בוודאות. משאירים אותה
+            # כמות שהיא — טקסט לא מנוקד עדיף על טקסט שנכתב פעמיים.
+            stats["paragraphs_skipped_unmappable"] += 1
+            skipped.append({"paragraph": idx, "text": text[:80]})
+            continue
+
+        pieces = redistribute(result.text, run_texts)
+        if "".join(strip_nikud(p) for p in pieces) != strip_nikud(normalized):
+            failures.append({"paragraph": idx, "reason": "חלוקת runs נכשלה"})
+            continue
+        for run, piece in zip(runs, pieces):
+            run.text = piece
+
+        # הקו האדום, אחרי הכתיבה ולא רק לפניה. הבדיקה שלמעלה רצה על מה
+        # שהמנוע החזיר; זו רצה על מה שבאמת יושב עכשיו במסמך.
+        if identity_diff(text, para.text):
+            failures.append(
+                {"paragraph": idx, "reason": "הפסקה שנכתבה אינה זהה למקור",
+                 "text": text[:80]}
+            )
+            continue
 
         stats["paragraphs"] += 1
         stats["chars"] += len(text)
@@ -151,7 +174,8 @@ def process(in_path: Path, out_path: Path, *, engine: Engine,
         "output": str(out_path),
         "paragraphs": stats["paragraphs"],
         "chars": stats["chars"],
-        "paragraphs_flattened": stats["paragraphs_flattened"],
+        "paragraphs_skipped_unmappable": stats["paragraphs_skipped_unmappable"],
+        "skipped": skipped,
         "paragraphs_nfc_normalized": stats["paragraphs_nfc_normalized"],
         "words": total_words,
         "by_layer": dict(sources),

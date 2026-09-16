@@ -275,5 +275,57 @@ class TestDocxRedistribution(unittest.TestCase):
         self.assertEqual(len(pieces), 2)
 
 
+class TestDocxHyperlinkRuns(unittest.TestCase):
+    """רגרסיה: טקסט בתוך w:hyperlink אינו ב-paragraph.runs.
+
+    הבאג שהיה: הצנרת הסתמכה על paragraph.runs, לא מצאה שם את טקסט
+    הקישור, ונפלה למסלול "שיטוח" שכתב את כל הפסקה ל-run הראשון —
+    בזמן שה-runs שבתוך הקישור נשארו כמות שהם. התוצאה: הפסקה הופיעה
+    פעמיים בקובץ הפלט.
+    """
+
+    def make_doc(self):
+        import docx
+        from docx.oxml.ns import qn
+
+        doc = docx.Document()
+        para = doc.add_paragraph()
+        para.add_run("אמר ")
+        link = para._p.makeelement(qn("w:hyperlink"), {})
+        run = para._p.makeelement(qn("w:r"), {})
+        t = para._p.makeelement(qn("w:t"), {})
+        t.text = "רבי עקיבא"
+        run.append(t)
+        link.append(run)
+        para._p.append(link)
+        return doc, para
+
+    def test_paragraph_runs_misses_hyperlink_text(self):
+        _doc, para = self.make_doc()
+        self.assertEqual(para.text, "אמר רבי עקיבא")
+        self.assertNotEqual("".join(r.text for r in para.runs), para.text)
+
+    def test_all_runs_covers_hyperlink_text(self):
+        sys.path.insert(0, str(ROOT / "pipeline"))
+        from docx_pipeline import all_runs
+
+        _doc, para = self.make_doc()
+        self.assertEqual("".join(r.text for r in all_runs(para)), para.text)
+
+    def test_written_paragraph_is_not_duplicated(self):
+        sys.path.insert(0, str(ROOT / "pipeline"))
+        from docx_pipeline import all_runs, redistribute
+
+        _doc, para = self.make_doc()
+        source = para.text
+        vocalized = "אָמַר רַבִּי עֲקִיבָא"
+        runs = all_runs(para)
+        pieces = redistribute(vocalized, [r.text for r in runs])
+        for run, piece in zip(runs, pieces):
+            run.text = piece
+        self.assertEqual(para.text, vocalized)
+        self.assertFalse(h.identity_diff(source, para.text))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
