@@ -245,5 +245,35 @@ class TestDictaBertLabels(unittest.TestCase):
         self.assertEqual("".join(split_for_model(text, 200)), text)
 
 
+class TestDocxRedistribution(unittest.TestCase):
+    """חלוקת הניקוד חזרה ל-runs של docx, בלי לשבור עיצוב ובלי לאבד תו."""
+
+    def redistribute(self, vocalized, runs):
+        sys.path.insert(0, str(ROOT / "pipeline"))
+        from docx_pipeline import redistribute
+
+        return redistribute(vocalized, runs)
+
+    def test_plain_runs(self):
+        pieces = self.redistribute("אָמַר רַבִּי עֲקִיבָא", ["אמר ", "רבי ", "עקיבא"])
+        self.assertEqual(pieces, ["אָמַר ", "רַבִּי ", "עֲקִיבָא"])
+
+    def test_runs_that_already_carry_nikud(self):
+        """בספר יש פסוקים מנוקדים ומוטעמים. אורך הגולמי גדול מאורך השלד."""
+        runs = ["הַנּוֹתֵ֥ן ", "בַּיָּ֖ם ", "דָּ֑רֶךְ"]
+        pieces = self.redistribute("".join(runs), runs)
+        self.assertEqual(pieces, runs)
+
+    def test_run_boundary_inside_a_word(self):
+        pieces = self.redistribute("שָׁלוֹם", ["של", "ום"])
+        self.assertEqual("".join(pieces), "שָׁלוֹם")
+        self.assertEqual([h.strip_nikud(p) for p in pieces], ["של", "ום"])
+
+    def test_empty_run_is_preserved(self):
+        pieces = self.redistribute("שָׁלוֹם", ["שלום", ""])
+        self.assertEqual("".join(pieces), "שָׁלוֹם")
+        self.assertEqual(len(pieces), 2)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

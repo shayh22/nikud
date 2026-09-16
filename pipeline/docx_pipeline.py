@@ -23,11 +23,15 @@ from hebrew import identity_diff, is_hebrew, normalize, strip_nikud  # noqa: E40
 
 
 def redistribute(vocalized: str, run_texts: list[str]) -> list[str]:
-    """מחלק טקסט מנוקד חזרה ל-runs לפי אורך השלד של כל run."""
+    """מחלק טקסט מנוקד חזרה ל-runs לפי אורך השלד של כל run.
+
+    הספירה היא בתווי שלד בלבד: run יכול להגיע מנוקד מלכתחילה (בספר יש
+    פסוקים מנוקדים ומוטעמים), ואז אורכו הגולמי גדול מאורך השלד שלו.
+    """
     out: list[str] = []
     pos = 0
     for original in run_texts:
-        need = len(original)
+        need = len(strip_nikud(original))
         taken = 0
         start = pos
         while pos < len(vocalized) and taken < need:
@@ -47,7 +51,7 @@ def redistribute(vocalized: str, run_texts: list[str]) -> list[str]:
 
 
 def process(in_path: Path, out_path: Path, *, engine: Engine,
-            max_paragraphs: int | None = None,
+            max_paragraphs: int | None = None, max_chars: int | None = None,
             report_path: Path | None = None) -> dict:
     import docx
 
@@ -60,13 +64,24 @@ def process(in_path: Path, out_path: Path, *, engine: Engine,
     samples: list[dict] = []
 
     processed = 0
+    chars_done = 0
     for idx, para in enumerate(paragraphs):
         text = para.text
         if not text.strip() or not is_hebrew(text):
             continue
         if max_paragraphs is not None and processed >= max_paragraphs:
             break
+        if max_chars is not None and chars_done >= max_chars:
+            break
         processed += 1
+        chars_done += len(text)
+
+        # המנוע עובד ב-NFC. בספר יש תווי תצוגה עבריים (FB1D–FB4F) שמתפרקים
+        # תחת NFC לאות + סימן — נרמול תקני והפיך ברמת המשמעות, אבל הוא
+        # משנה את מניין התווים, ולכן ההשוואה ל-runs חייבת להיות בו.
+        normalized = normalize(text)
+        if normalized != text:
+            stats["paragraphs_nfc_normalized"] += 1
 
         result = engine.vocalize(text, paragraph_id=f"p{idx}")
         diff = identity_diff(text, result.text)
@@ -75,10 +90,10 @@ def process(in_path: Path, out_path: Path, *, engine: Engine,
             failures.append({"paragraph": idx, "text": text[:80]})
             continue
 
-        run_texts = [r.text for r in para.runs]
-        if run_texts and "".join(run_texts) == text:
+        run_texts = [normalize(r.text) for r in para.runs]
+        if run_texts and "".join(run_texts) == normalized:
             pieces = redistribute(result.text, run_texts)
-            if "".join(strip_nikud(p) for p in pieces) != text:
+            if "".join(strip_nikud(p) for p in pieces) != strip_nikud(normalized):
                 failures.append({"paragraph": idx, "reason": "חלוקת runs נכשלה"})
                 continue
             for run, piece in zip(para.runs, pieces):
@@ -112,7 +127,9 @@ def process(in_path: Path, out_path: Path, *, engine: Engine,
         "input": str(in_path),
         "output": str(out_path),
         "paragraphs": stats["paragraphs"],
+        "chars": chars_done,
         "paragraphs_flattened": stats["paragraphs_flattened"],
+        "paragraphs_nfc_normalized": stats["paragraphs_nfc_normalized"],
         "words": total_words,
         "by_layer": dict(sources),
         "coverage": {
@@ -141,20 +158,26 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--engine", default="lexicon+quotes",
                    help="lexicon | lexicon+quotes | full | trained:<path>")
     p.add_argument("--max-paragraphs", type=int, default=None)
+    p.add_argument("--max-chars", type=int, default=None,
+                   help="עצירה אחרי כך וכך תווים — לבדיקת העמודים הראשונים")
+    p.add_argument("--lexicon-dir", type=Path, default=ROOT / "lexicon")
     p.add_argument("--report", type=Path, default=None)
     args = p.parse_args(argv)
 
+    ld = args.lexicon_dir
     if args.engine == "full":
-        eng = Engine.load(with_model="dicta-il/dictabert-large-char-menaked")
+        eng = Engine.load(lexicon_dir=ld,
+                          with_model="dicta-il/dictabert-large-char-menaked")
     elif args.engine.startswith("trained:"):
-        eng = Engine.load(with_model=args.engine.split(":", 1)[1])
+        eng = Engine.load(lexicon_dir=ld, with_model=args.engine.split(":", 1)[1])
     elif args.engine == "lexicon":
-        eng = Engine.load(with_quotes=False)
+        eng = Engine.load(lexicon_dir=ld, with_quotes=False)
     else:
-        eng = Engine.load()
+        eng = Engine.load(lexicon_dir=ld)
 
     summary = process(args.input, args.output, engine=eng,
-                      max_paragraphs=args.max_paragraphs, report_path=args.report)
+                      max_paragraphs=args.max_paragraphs,
+                      max_chars=args.max_chars, report_path=args.report)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 0
 
