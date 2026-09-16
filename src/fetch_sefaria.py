@@ -10,8 +10,10 @@ import argparse
 import json
 import random
 import sys
+import threading
 import time
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -26,7 +28,7 @@ RAW = ROOT / "data" / "raw"
 API = "https://www.sefaria.org/api"
 UA = "nikud-engine/1.0 (research; contact via repo)"
 
-MIN_INTERVAL = 0.35   # שניות בין בקשות — כיבוד rate limit
+MIN_INTERVAL = 0.20   # שניות בין בקשות — כיבוד rate limit
 MAX_RETRIES = 5
 
 
@@ -37,10 +39,10 @@ class Fetcher:
     def __init__(self, raw_dir: Path = RAW, *, min_interval: float = MIN_INTERVAL):
         self.raw = raw_dir
         self.raw.mkdir(parents=True, exist_ok=True)
-        self.session = requests.Session()
-        self.session.headers["User-Agent"] = UA
         self.min_interval = min_interval
         self._last = 0.0
+        self._lock = threading.Lock()      # שומר על מרווח הבקשות בין עובדים
+        self._local = threading.local()
         self.hits = 0
         self.misses = 0
 
@@ -60,19 +62,44 @@ class Fetcher:
             except json.JSONDecodeError:
                 path.unlink()  # cache פגום — נמשוך שוב
         data = self._request(url)
-        path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        # כתיבה דרך קובץ זמני: עובד שנקטע באמצע לא משאיר cache חצי־כתוב.
+        tmp = path.with_suffix(f".{threading.get_ident()}.tmp")
+        tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(path)
         self.misses += 1
         return data
+
+    def prefetch(self, jobs: list[tuple[str, str, str]], workers: int) -> None:
+        """ממלא את ה-cache במקביל. הלולאה הראשית קוראת אחר כך מהדיסק, בסדר."""
+        if workers <= 1 or not jobs:
+            return
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            list(pool.map(lambda job: self.get(*job), jobs))
+
+    @property
+    def _session(self) -> requests.Session:
+        """session לכל thread — requests.Session אינו בטוח לשיתוף."""
+        sess = getattr(self._local, "session", None)
+        if sess is None:
+            sess = requests.Session()
+            sess.headers["User-Agent"] = UA
+            self._local.session = sess
+        return sess
+
+    def _throttle(self) -> None:
+        """מרווח מינימלי בין בקשות, נשמר גם כשיש כמה עובדים."""
+        with self._lock:
+            wait = self.min_interval - (time.monotonic() - self._last)
+            if wait > 0:
+                time.sleep(wait)
+            self._last = time.monotonic()
 
     def _request(self, url: str) -> Any:
         delay = 1.0
         for attempt in range(MAX_RETRIES):
-            wait = self.min_interval - (time.monotonic() - self._last)
-            if wait > 0:
-                time.sleep(wait)
+            self._throttle()
             try:
-                r = self.session.get(url, timeout=60)
-                self._last = time.monotonic()
+                r = self._session.get(url, timeout=60)
                 if r.status_code == 429:
                     time.sleep(delay + random.random())
                     delay *= 2
@@ -82,7 +109,6 @@ class Fetcher:
                 r.raise_for_status()
                 return r.json()
             except (requests.RequestException, json.JSONDecodeError) as exc:
-                self._last = time.monotonic()
                 if attempt == MAX_RETRIES - 1:
                     return {"_error": str(exc), "_url": url}
                 time.sleep(delay + random.random())
@@ -192,12 +218,15 @@ def _flatten_text(node: Any, out: list[str]) -> None:
             _flatten_text(item, out)
 
 
-def fetch_section(fetcher: Fetcher, ref: str, source: Source) -> FetchedSection | None:
-    url = (
+def text_url(ref: str) -> str:
+    return (
         f"{API}/v3/texts/{urllib.parse.quote(ref)}"
         "?version=hebrew&return_format=text_only"
     )
-    data = fetcher.get("texts", ref, url)
+
+
+def fetch_section(fetcher: Fetcher, ref: str, source: Source) -> FetchedSection | None:
+    data = fetcher.get("texts", ref, text_url(ref))
     if not isinstance(data, dict) or data.get("_error"):
         return None
     version = _pick_version(data.get("versions") or [], source)
@@ -293,7 +322,7 @@ class LicenseLog:
 
 
 def run(source_keys: Iterable[str], *, limit_sections: int | None, out: Path,
-        min_interval: float = MIN_INTERVAL) -> int:
+        min_interval: float = MIN_INTERVAL, workers: int = 1) -> int:
     fetcher = Fetcher(min_interval=min_interval)
     licenses = LicenseLog(ROOT / "data" / "LICENSES.md")
     state_path = RAW / "_state.json"
@@ -309,10 +338,18 @@ def run(source_keys: Iterable[str], *, limit_sections: int | None, out: Path,
             if limit_sections:
                 refs = refs[:limit_sections]
             print(f"[{key}] {len(refs)} מקטעים", file=sys.stderr)
+            pending = [r for r in refs if f"{key}::{r}" not in done]
             for i, ref in enumerate(refs):
                 marker = f"{key}::{ref}"
                 if marker in done:
                     continue
+                # חימום ה-cache קדימה, כדי שהלולאה הראשית תפגע בדיסק.
+                if workers > 1 and pending and ref == pending[0]:
+                    window = pending[: workers * 8]
+                    pending = pending[workers * 8 :]
+                    fetcher.prefetch(
+                        [("texts", r, text_url(r)) for r in window], workers
+                    )
                 sec = fetch_section(fetcher, ref, source)
                 if sec is not None:
                     licenses.record(sec)
@@ -361,6 +398,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="תקרת מקטעים לכל מקור — לריצת בדיקה")
     p.add_argument("--out", type=Path, default=ROOT / "data" / "raw" / "sections.jsonl")
     p.add_argument("--min-interval", type=float, default=MIN_INTERVAL)
+    p.add_argument("--workers", type=int, default=1,
+                   help="בקשות מקבילות. המרווח בין בקשות נשמר גם כך.")
     args = p.parse_args(argv)
 
     if args.sources:
@@ -373,7 +412,7 @@ def main(argv: list[str] | None = None) -> int:
     if unknown:
         p.error(f"מקורות לא מוכרים: {unknown}. קיימים: {list(CATALOG)}")
     run(keys, limit_sections=args.limit_sections, out=args.out,
-        min_interval=args.min_interval)
+        min_interval=args.min_interval, workers=args.workers)
     return 0
 
 

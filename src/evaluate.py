@@ -30,7 +30,6 @@ from hebrew import (  # noqa: E402
     identity_diff,
     is_acronym,
     normalize,
-    split_tokens,
     strip_nikud,
     word_matches,
     words,
@@ -256,17 +255,23 @@ def render_report(results: list[Result], *, title: str, manifest: dict,
             cells.append(f"{_pct(b.wer)} ({b.words})" if b and b.words else "—")
         lines.append(f"| {r.name} | " + " | ".join(cells) + " |")
 
-    if baseline:
-        lines += ["", "## מול הבסיס", "", "| מנוע | WER | שינוי |", "|---|---|---|"]
-        base_wer = baseline.get("wer")
+    if baseline and baseline.get("wer") is not None:
+        base_wer = baseline["wer"]
+        base_name = baseline.get("name", "baseline")
+        lines += [
+            "",
+            f"## מול הבסיס — `{base_name}` ב-{_pct(base_wer)}",
+            "",
+            "| מנוע | WER | שינוי |",
+            "|---|---|---|",
+        ]
         for r in results:
-            delta = r.overall.wer - base_wer if base_wer is not None else None
-            arrow = "" if delta is None else ("↓" if delta < 0 else "↑")
-            lines.append(
-                f"| {r.name} | {_pct(r.overall.wer)} | "
-                + ("—" if delta is None else f"{arrow} {_pct(abs(delta))}")
-                + " |"
-            )
+            delta = r.overall.wer - base_wer
+            if abs(delta) < 1e-9:
+                cell = "—"
+            else:
+                cell = ("↓ " if delta < 0 else "↑ ") + _pct(abs(delta))
+            lines.append(f"| {r.name} | {_pct(r.overall.wer)} | {cell} |")
 
     for r in results:
         if not r.top_confusions:
@@ -332,10 +337,14 @@ def main(argv: list[str] | None = None) -> int:
             evaluate(fn, dataset, name=spec, homograph_skeletons=homos, extra_names=names)
         )
 
+    # ההשוואה היא מול המנוע הטוב ביותר בבסיס, לא מול הראשון ברשימה —
+    # אחרת כל שינוי נראה מצוין מול מנוע ריק.
     baseline = None
-    if args.baseline and args.baseline.exists():
-        baseline = json.loads(args.baseline.read_text(encoding="utf-8"))
-        baseline = baseline.get("best") or (baseline.get("results") or [{}])[0]
+    if args.baseline and args.baseline.exists() and args.baseline != args.out:
+        stored = json.loads(args.baseline.read_text(encoding="utf-8"))
+        candidates = [r for r in stored.get("results", []) if r.get("wer") is not None]
+        if candidates:
+            baseline = min(candidates, key=lambda r: r["wer"])
 
     report = render_report(results, title=args.title, manifest=manifest, baseline=baseline)
     out = args.out or (REPORTS / "evaluation.md")

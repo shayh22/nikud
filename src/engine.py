@@ -29,9 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from build_lexicon import Lexicon  # noqa: E402
 from hebrew import (  # noqa: E402
     assert_identity,
-    canonical,
     has_nikud,
-    identity_diff,
     is_acronym,
     normalize,
     split_tokens,
