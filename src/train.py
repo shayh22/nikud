@@ -37,6 +37,7 @@ from hebrew import normalize, strip_nikud  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 CORPUS_DIR = ROOT / "data" / "corpus"
 CHECKPOINTS = ROOT / "models" / "checkpoints"
+EVAL_DIR = ROOT / "data" / "eval"
 
 MAX_LEN = 512          # תווים לדוגמה. משפטים ארוכים יותר נחתכים בבניית הקורפוס.
 
@@ -71,15 +72,15 @@ def load_examples(corpus_dir: Path, *, fraction: float, seed: int,
     return rows
 
 
-def guard_no_leakage(examples: list[str]) -> None:
+def guard_no_leakage(examples: list[str], eval_dir: Path = EVAL_DIR) -> None:
     """הסט המוקפא לא נכנס לאימון. נבדק שוב כאן, לא רק ב-build_corpus."""
-    if not build_eval.verify():
+    if not build_eval.verify(eval_dir):
         raise SystemExit(
             "סט ההערכה חסר או שה-hash לא תואם. בלי סט מוקפא אין מדידה, "
             "ובלי מדידה אין אימון."
         )
     eval_skeletons = {
-        strip_nikud(normalize(r["text"])) for r in build_eval.load()
+        strip_nikud(normalize(r["text"])) for r in build_eval.load(eval_dir)
     }
     overlap = sum(1 for t in examples if strip_nikud(normalize(t)) in eval_skeletons)
     if overlap:
@@ -156,7 +157,7 @@ class Batcher:
 
 def train(cfg: TrainConfig, *, corpus_dir: Path, out_dir: Path,
           replay_jsonl: Path | None, resume: Path | None,
-          smoke: bool = False) -> dict:
+          eval_dir: Path = EVAL_DIR, smoke: bool = False) -> dict:
     import torch
     from transformers import AutoModel, AutoTokenizer, get_linear_schedule_with_warmup
 
@@ -171,7 +172,7 @@ def train(cfg: TrainConfig, *, corpus_dir: Path, out_dir: Path,
     examples = load_examples(corpus_dir, fraction=cfg.corpus_fraction, seed=cfg.seed)
     if not examples:
         raise SystemExit(f"אין קורפוס ב-{corpus_dir}. הרץ build_corpus.py קודם.")
-    guard_no_leakage(examples)
+    guard_no_leakage(examples, eval_dir)
 
     if replay_jsonl and replay_jsonl.exists():
         replay = [
@@ -222,7 +223,9 @@ def train(cfg: TrainConfig, *, corpus_dir: Path, out_dir: Path,
     step = 0
     t0 = time.monotonic()
 
-    from BertForDiacritization import MenakedLabels  # type: ignore # noqa: E402
+    # MenakedLabels חי במודול הקוד המרוחק של המודל, שנטען דינמית ואין לו
+    # שם יבוא יציב. לוקחים אותו מהמודול של המחלקה שנטענה בפועל.
+    MenakedLabels = sys.modules[type(model).__module__].MenakedLabels
     print(f"אימון: {len(examples)} דוגמאות · {total_steps} צעדים · {device}",
           file=sys.stderr)
 
@@ -266,7 +269,7 @@ def train(cfg: TrainConfig, *, corpus_dir: Path, out_dir: Path,
                 )
 
             if step % cfg.eval_every == 0 or step == total_steps:
-                wer = _evaluate_checkpoint(model, tokenizer, device)
+                wer = _evaluate_checkpoint(model, tokenizer, device, eval_dir)
                 history.append({"step": step, "loss": out.loss.item(), "wer": wer})
                 print(f"  >> צ'קפוינט {step}: WER={wer:.4f}", file=sys.stderr)
                 if wer < best["wer"]:
@@ -285,7 +288,7 @@ def train(cfg: TrainConfig, *, corpus_dir: Path, out_dir: Path,
     return {"best": best, "history": history, "steps": step}
 
 
-def _evaluate_checkpoint(model, tokenizer, device) -> float:
+def _evaluate_checkpoint(model, tokenizer, device, eval_dir: Path = EVAL_DIR) -> float:
     """WER על סט ההערכה המוקפא. לא על סט האימון."""
     import torch
 
@@ -293,7 +296,7 @@ def _evaluate_checkpoint(model, tokenizer, device) -> float:
     from hebrew import word_matches, words
 
     model.eval()
-    rows = build_eval.load()
+    rows = build_eval.load(eval_dir)
     nikud_classes = list(model.config.nikud_classes)
     shin_classes = list(model.config.shin_classes)
     mat_lect = getattr(model.config, "mat_lect_token", "<MAT_LECT>")
@@ -367,6 +370,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--eval-every", type=int, default=TrainConfig.eval_every)
     p.add_argument("--max-steps", type=int, default=None)
     p.add_argument("--corpus-fraction", type=float, default=1.0)
+    p.add_argument("--eval-dir", type=Path, default=EVAL_DIR)
     args = p.parse_args(argv)
 
     cfg = TrainConfig(
@@ -380,7 +384,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     result = train(cfg, corpus_dir=args.corpus, out_dir=args.out,
                    replay_jsonl=args.replay_jsonl, resume=args.resume,
-                   smoke=args.smoke)
+                   eval_dir=args.eval_dir, smoke=args.smoke)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
