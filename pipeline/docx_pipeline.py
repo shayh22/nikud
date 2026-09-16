@@ -52,29 +52,50 @@ def redistribute(vocalized: str, run_texts: list[str]) -> list[str]:
 
 def process(in_path: Path, out_path: Path, *, engine: Engine,
             max_paragraphs: int | None = None, max_chars: int | None = None,
-            report_path: Path | None = None) -> dict:
+            report_path: Path | None = None, batch_size: int = 24,
+            progress_every: int = 100) -> dict:
     import docx
 
     doc = docx.Document(str(in_path))
-    paragraphs = doc.paragraphs
     stats: Counter = Counter()
     sources: Counter = Counter()
     unresolved: Counter = Counter()
     failures: list[dict] = []
     samples: list[dict] = []
 
-    processed = 0
+    # --- שלב א': אילו פסקאות בכלל מנוקדות -------------------------------
+    targets: list[tuple[int, object, str]] = []
     chars_done = 0
-    for idx, para in enumerate(paragraphs):
+    for idx, para in enumerate(doc.paragraphs):
         text = para.text
         if not text.strip() or not is_hebrew(text):
             continue
-        if max_paragraphs is not None and processed >= max_paragraphs:
+        if max_paragraphs is not None and len(targets) >= max_paragraphs:
             break
         if max_chars is not None and chars_done >= max_chars:
             break
-        processed += 1
         chars_done += len(text)
+        targets.append((idx, para, text))
+
+    # --- שלב ב': המודל, באצווה ------------------------------------------
+    # השכבה היחידה שמרוויחה מאצווה היא המודל, אבל היא גם היקרה מכולן.
+    # ספר שלם בקריאה אחת לפסקה לוקח שעות; באצווה זה עשרות דקות.
+    predictions: list[str | None] = [None] * len(targets)
+    batcher = getattr(engine.model, "vocalize_batch", None)
+    if batcher is not None:
+        for start in range(0, len(targets), batch_size):
+            chunk = targets[start : start + batch_size]
+            predictions[start : start + len(chunk)] = batcher(
+                [strip_nikud(normalize(t)) for _i, _p, t in chunk]
+            )
+            if progress_every and start % (progress_every) < batch_size:
+                print(f"  מודל: {start + len(chunk)}/{len(targets)} פסקאות",
+                      file=sys.stderr, flush=True)
+
+    # --- שלב ג': שאר השכבות, והחזרה ל-runs -------------------------------
+    for n, ((idx, para, text), predicted) in enumerate(zip(targets, predictions), 1):
+        if progress_every and n % progress_every == 0:
+            print(f"  ניקוד: {n}/{len(targets)} פסקאות", file=sys.stderr, flush=True)
 
         # המנוע עובד ב-NFC. בספר יש תווי תצוגה עבריים (FB1D–FB4F) שמתפרקים
         # תחת NFC לאות + סימן — נרמול תקני והפיך ברמת המשמעות, אבל הוא
@@ -83,7 +104,8 @@ def process(in_path: Path, out_path: Path, *, engine: Engine,
         if normalized != text:
             stats["paragraphs_nfc_normalized"] += 1
 
-        result = engine.vocalize(text, paragraph_id=f"p{idx}")
+        result = engine.vocalize(text, paragraph_id=f"p{idx}",
+                                 model_prediction=predicted)
         diff = identity_diff(text, result.text)
         if diff:
             # לא אמור לקרות — vocalize כבר אוכף זאת. כאן זו רשת ביטחון שנייה.
@@ -106,6 +128,7 @@ def process(in_path: Path, out_path: Path, *, engine: Engine,
             stats["paragraphs_flattened"] += 1
 
         stats["paragraphs"] += 1
+        stats["chars"] += len(text)
         for d in result.decisions:
             sources[d.source] += 1
         for skel in result.unresolved:
@@ -127,7 +150,7 @@ def process(in_path: Path, out_path: Path, *, engine: Engine,
         "input": str(in_path),
         "output": str(out_path),
         "paragraphs": stats["paragraphs"],
-        "chars": chars_done,
+        "chars": stats["chars"],
         "paragraphs_flattened": stats["paragraphs_flattened"],
         "paragraphs_nfc_normalized": stats["paragraphs_nfc_normalized"],
         "words": total_words,
@@ -162,6 +185,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="עצירה אחרי כך וכך תווים — לבדיקת העמודים הראשונים")
     p.add_argument("--lexicon-dir", type=Path, default=ROOT / "lexicon")
     p.add_argument("--report", type=Path, default=None)
+    p.add_argument("--batch-size", type=int, default=24,
+                   help="פסקאות לאצווה במודל")
     args = p.parse_args(argv)
 
     ld = args.lexicon_dir
@@ -177,7 +202,8 @@ def main(argv: list[str] | None = None) -> int:
 
     summary = process(args.input, args.output, engine=eng,
                       max_paragraphs=args.max_paragraphs,
-                      max_chars=args.max_chars, report_path=args.report)
+                      max_chars=args.max_chars, report_path=args.report,
+                      batch_size=args.batch_size)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 0
 
