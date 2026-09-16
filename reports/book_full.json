@@ -4,7 +4,8 @@
     "output": "out/ואנחנו-קמנו-ונתעודד-מנוקד.docx",
     "paragraphs": 1550,
     "chars": 288420,
-    "paragraphs_flattened": 7,
+    "paragraphs_skipped_unmappable": 0,
+    "skipped": [],
     "paragraphs_nfc_normalized": 45,
     "words": 52017,
     "by_layer": {
