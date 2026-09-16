@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Raw API responses and built corpora are large; regenerate with the scripts.
+data/raw/
+data/corpus/*.jsonl
+models/checkpoints/
+*.log

@@ -1,0 +1,112 @@
+[
+  {
+    "source": "mishnah",
+    "title": "Mishnah",
+    "layer": "mishnaic",
+    "version_title": "Torat Emet 357",
+    "license": "Public Domain",
+    "version_source": "http://www.toratemetfreeware.com/index.html?downloads",
+    "commercial_ok": true,
+    "sections": 524,
+    "example_ref": "Mishnah Berakhot 1"
+  },
+  {
+    "source": "mishnah",
+    "title": "Mishnah",
+    "layer": "mishnaic",
+    "version_title": "Version of the Gemara - vocalized",
+    "license": "Public Domain",
+    "version_source": "https://www.nli.org.il/he/books/NNL_ALEPH002036659",
+    "commercial_ok": true,
+    "sections": 1,
+    "example_ref": "Mishnah Bikkurim 4"
+  },
+  {
+    "source": "siddur",
+    "title": "Siddur Ashkenaz",
+    "layer": "liturgy",
+    "version_title": "Daat Siddur Ashkenaz",
+    "license": "Public Domain",
+    "version_source": "http://www.daat.ac.il/daat/sidurim/tohen3.htm",
+    "commercial_ok": true,
+    "sections": 218,
+    "example_ref": "Siddur Ashkenaz, Shabbat, Shacharit, Preparatory Prayers, Modeh Ani"
+  },
+  {
+    "source": "siddur",
+    "title": "Siddur Ashkenaz",
+    "layer": "liturgy",
+    "version_title": "Siddur Veshinantam ",
+    "license": "unknown",
+    "version_source": "https://www.nli.org.il/he/books/NNL_ALEPH003930085/NLI",
+    "commercial_ok": true,
+    "sections": 1,
+    "example_ref": "Siddur Ashkenaz, Weekday, Maariv, Additions for Motza'ei Shabbat, Veyiten Lekha"
+  },
+  {
+    "source": "siddur",
+    "title": "Siddur Ashkenaz",
+    "layer": "liturgy",
+    "version_title": "Tanach with Nikkud",
+    "license": "unknown",
+    "version_source": "http://sefaria.org",
+    "commercial_ok": true,
+    "sections": 1,
+    "example_ref": "Siddur Ashkenaz, Weekday, Shacharit, Post Service, Ten Commandments"
+  },
+  {
+    "source": "siddur",
+    "title": "Siddur Ashkenaz",
+    "layer": "liturgy",
+    "version_title": "The Metsudah siddur, 1981",
+    "license": "CC-BY",
+    "version_source": "https://www.nli.org.il/he/books/NNL_ALEPH002211687",
+    "commercial_ok": true,
+    "sections": 221,
+    "example_ref": "Siddur Ashkenaz, Weekday, Shacharit, Preparatory Prayers, Modeh Ani"
+  },
+  {
+    "source": "siddur",
+    "title": "Siddur Ashkenaz",
+    "layer": "liturgy",
+    "version_title": "The Metsudah siddur: a new linear siddur with English translation by Avrohom Davis, 1981",
+    "license": "CC-BY",
+    "version_source": "https://www.nli.org.il/he/books/NNL_ALEPH002211687",
+    "commercial_ok": true,
+    "sections": 7,
+    "example_ref": "Siddur Ashkenaz, Festivals, Rosh Chodesh, Hallel, Psalm 113"
+  },
+  {
+    "source": "siddur",
+    "title": "Siddur Ashkenaz",
+    "layer": "liturgy",
+    "version_title": "Torat Emet 357",
+    "license": "unknown",
+    "version_source": "http://www.toratemetfreeware.com/index.html?downloads",
+    "commercial_ok": true,
+    "sections": 1,
+    "example_ref": "Siddur Ashkenaz, Shabbat, Kabbalat Shabbat, Bameh Madlikin"
+  },
+  {
+    "source": "talmud",
+    "title": "Bavli",
+    "layer": "aramaic",
+    "version_title": "William Davidson Edition - Vocalized Aramaic",
+    "license": "CC-BY-NC",
+    "version_source": "http://sefaria.org",
+    "commercial_ok": false,
+    "sections": 76,
+    "example_ref": "Berakhot 2a"
+  },
+  {
+    "source": "tanakh",
+    "title": "Tanakh",
+    "layer": "biblical",
+    "version_title": "Miqra according to the Masorah",
+    "license": "CC-BY-SA",
+    "version_source": "https://he.wikisource.org/wiki/%D7%9E%D7%A9%D7%AA%D7%9E%D7%A9:Dovi/%D7%9E%D7%A7%D7%A8%D7%90_%D7%A2%D7%9C_%D7%A4%D7%99_%D7%94%D7%9E%D7%A1%D7%95%D7%A8%D7%94",
+    "commercial_ok": true,
+    "sections": 929,
+    "example_ref": "Genesis 1"
+  }
+]
