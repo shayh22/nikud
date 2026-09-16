@@ -12,7 +12,7 @@
 | Siddur Ashkenaz | The Metsudah siddur, 1981 | CC-BY | כן | 221 | `Siddur Ashkenaz, Weekday, Shacharit, Preparatory Prayers, Modeh Ani` |
 | Siddur Ashkenaz | The Metsudah siddur: a new linear siddur with English translation by Avrohom Davis, 1981 | CC-BY | כן | 7 | `Siddur Ashkenaz, Festivals, Rosh Chodesh, Hallel, Psalm 113` |
 | Siddur Ashkenaz | Torat Emet 357 | unknown | כן | 1 | `Siddur Ashkenaz, Shabbat, Kabbalat Shabbat, Bameh Madlikin` |
-| Bavli | William Davidson Edition - Vocalized Aramaic | CC-BY-NC | **לא** | 2739 | `Berakhot 2a` |
+| Bavli | William Davidson Edition - Vocalized Aramaic | CC-BY-NC | **לא** | 3606 | `Berakhot 2a` |
 | Tanakh | Miqra according to the Masorah | CC-BY-SA | כן | 929 | `Genesis 1` |
 
 ## אזהרה
