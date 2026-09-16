@@ -47,6 +47,7 @@ class Bucket:
     words: int = 0
     word_errors: int = 0
     word_errors_no_shin: int = 0
+    word_errors_lenient: int = 0
     slots: int = 0
     slot_errors: int = 0
 
@@ -57,6 +58,10 @@ class Bucket:
     @property
     def wer_no_shin(self) -> float:
         return self.word_errors_no_shin / self.words if self.words else 0.0
+
+    @property
+    def wer_lenient(self) -> float:
+        return self.word_errors_lenient / self.words if self.words else 0.0
 
     @property
     def cer(self) -> float:
@@ -81,6 +86,7 @@ class Result:
             "words": self.overall.words,
             "wer": round(self.overall.wer, 4),
             "wer_no_shin": round(self.overall.wer_no_shin, 4),
+            "wer_lenient": round(self.overall.wer_lenient, 4),
             "cer": round(self.overall.cer, 4),
             "identity_failures": len(self.identity_failures),
             "seconds": round(self.seconds, 1),
@@ -89,6 +95,7 @@ class Result:
                     "words": b.words,
                     "wer": round(b.wer, 4),
                     "wer_no_shin": round(b.wer_no_shin, 4),
+                    "wer_lenient": round(b.wer_lenient, 4),
                     "cer": round(b.cer, 4),
                 }
                 for k, b in sorted(self.segments.items())
@@ -163,6 +170,7 @@ def evaluate(
                 res.overall.words += 1
                 res.overall.word_errors += 1
                 res.overall.word_errors_no_shin += 1
+                res.overall.word_errors_lenient += 1
                 slots = len([c for c in strip_nikud(w)])
                 res.overall.slots += slots
                 res.overall.slot_errors += slots
@@ -176,6 +184,7 @@ def evaluate(
         for i, (gw, pw) in enumerate(zip(gold_words, pred_words)):
             ok = word_matches(gw, pw)
             ok_no_shin = word_matches(gw, pw, ignore_shin=True)
+            ok_lenient = word_matches(gw, pw, lenient=True)
             errs, total = char_errors(gw, pw)
 
             buckets = [res.overall]
@@ -197,6 +206,8 @@ def evaluate(
                     b.word_errors += 1
                 if not ok_no_shin:
                     b.word_errors_no_shin += 1
+                if not ok_lenient:
+                    b.word_errors_lenient += 1
 
             if not ok and collect_errors:
                 res.top_confusions[(gw, pw)] += 1
@@ -235,13 +246,14 @@ def render_report(results: list[Result], *, title: str, manifest: dict,
         "",
         "## תוצאות",
         "",
-        "| מנוע | WER | WER ללא שי\"ן | CER | כשלי זהות | שניות |",
-        "|---|---|---|---|---|---|",
+        "| מנוע | WER | WER ללא שי\"ן | WER סלחני | CER | כשלי זהות | שניות |",
+        "|---|---|---|---|---|---|---|",
     ]
     for r in results:
         flag = "" if not r.identity_failures else f" ⛔ {len(r.identity_failures)}"
         lines.append(
             f"| {r.name} | {_pct(r.overall.wer)} | {_pct(r.overall.wer_no_shin)} | "
+            f"{_pct(r.overall.wer_lenient)} | "
             f"{_pct(r.overall.cer)} | {len(r.identity_failures)}{flag} | "
             f"{r.seconds:.0f} |"
         )
@@ -290,6 +302,11 @@ def render_report(results: list[Result], *, title: str, manifest: dict,
         "ראיה בקורפוס נשארת בלי ניקוד ונספרת כשגיאה — זו בחירה מכוונת, "
         "לא כשל: המנוע לא מנחש.",
         "* `dictabert` הוא המודל לבדו, בלי אף שכבה מעליו.",
+        "* **WER סלחני** מוותר על שתי הבחנות שהן מוסכמת מהדורה ולא ניקוד: "
+        "קמץ קטן מול קמץ (U+05C7 מול U+05B8), ודגש קל באות בגדכפ\"ת. "
+        "הפער בינו לבין ה-WER המחמיר הוא המחיר שהמנוע משלם על כך שסט "
+        "ההערכה וקורפוס האימון באים ממהדורות עם מוסכמות שונות. "
+        "המדד המחמיר הוא עדיין המדד הראשי.",
         "* `full` הוא הערימה כולה.",
         "* **כשלי זהות** חייבים להיות 0. כל ערך אחר פוסל את הריצה, "
         "ולא משנה כמה ה-WER נמוך.",
@@ -362,7 +379,9 @@ def main(argv: list[str] | None = None) -> int:
     # ההשוואה היא מול המנוע הטוב ביותר בבסיס, לא מול הראשון ברשימה —
     # אחרת כל שינוי נראה מצוין מול מנוע ריק.
     baseline = None
-    if args.baseline and args.baseline.exists() and args.baseline != args.out:
+    # כשמייצרים את הבסיס עצמו אין מול מה להשוות — הקובץ עומד להידרס.
+    out_json = (args.out or (REPORTS / "evaluation.md")).with_suffix(".json")
+    if args.baseline and args.baseline.exists() and args.baseline != out_json:
         stored = json.loads(args.baseline.read_text(encoding="utf-8"))
         candidates = [r for r in stored.get("results", []) if r.get("wer") is not None]
         if candidates:

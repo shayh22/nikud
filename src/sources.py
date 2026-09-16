@@ -57,10 +57,14 @@ CATALOG: dict[str, Source] = {
         ),
         Source(
             key="mishneh_torah",
-            title="Mishneh Torah",
+            # shape API דורש את נתיב הקטגוריה המלא. "Mishneh Torah" לבדו
+            # מחזיר "No index or category found".
+            title="Halakhah/Mishneh Torah",
             layer="mishnaic",
             commercial_ok=True,
-            note="רמב\"ם. חלקו מנוקד — build_corpus מסנן מה שאינו.",
+            note="רמב\"ם, Torat Emet — נחלת הכלל. פרוזה הלכתית מנוקדת, "
+            "המשלב הקרוב ביותר לספרות רבנית מאוחרת.",
+            prefer_versions=("Torat Emet",),
         ),
     ]
 }

@@ -8,7 +8,8 @@
     "version_source": "http://www.toratemetfreeware.com/index.html?downloads",
     "commercial_ok": true,
     "sections": 524,
-    "example_ref": "Mishnah Berakhot 1"
+    "example_ref": "Mishnah Berakhot 1",
+    "license_verdict": "ok"
   },
   {
     "source": "mishnah",
@@ -19,7 +20,68 @@
     "version_source": "https://www.nli.org.il/he/books/NNL_ALEPH002036659",
     "commercial_ok": true,
     "sections": 1,
-    "example_ref": "Mishnah Bikkurim 4"
+    "example_ref": "Mishnah Bikkurim 4",
+    "license_verdict": "ok"
+  },
+  {
+    "source": "mishneh_torah",
+    "title": "Halakhah/Mishneh Torah",
+    "layer": "mishnaic",
+    "version_title": "Friedberg Edition",
+    "license": "Public Domain",
+    "version_source": "https://fjms.genizah.org/",
+    "commercial_ok": true,
+    "sections": 39,
+    "example_ref": "Kuntres Zikah 1",
+    "license_verdict": "ok"
+  },
+  {
+    "source": "mishneh_torah",
+    "title": "Halakhah/Mishneh Torah",
+    "layer": "mishnaic",
+    "version_title": "Mishneh Torah with Commentary by Rabbi Adin Even-Israel Steinsaltz, Koren Publishers",
+    "license": "CC-BY-NC",
+    "version_source": "https://korenpub.com/products/rambam-mishneh-torah-sethardcover",
+    "commercial_ok": false,
+    "sections": 84,
+    "example_ref": "Steinsaltz Introductions to Mishneh Torah, Foundations of the Torah",
+    "license_verdict": "noncommercial"
+  },
+  {
+    "source": "mishneh_torah",
+    "title": "Halakhah/Mishneh Torah",
+    "layer": "mishnaic",
+    "version_title": "Torat Emet 363",
+    "license": "Public Domain",
+    "version_source": "http://www.toratemetfreeware.com/index.html?downloads",
+    "commercial_ok": true,
+    "sections": 954,
+    "example_ref": "Mishneh Torah, Foundations of the Torah 1",
+    "license_verdict": "ok"
+  },
+  {
+    "source": "mishneh_torah",
+    "title": "Halakhah/Mishneh Torah",
+    "layer": "mishnaic",
+    "version_title": "Torat Emet 370",
+    "license": "Public Domain",
+    "version_source": "http://www.toratemetfreeware.com/index.html?downloads",
+    "commercial_ok": true,
+    "sections": 51,
+    "example_ref": "Mishneh Torah, Reading the Shema 1",
+    "license_verdict": "ok"
+  },
+  {
+    "source": "mishneh_torah",
+    "title": "Halakhah/Mishneh Torah",
+    "layer": "mishnaic",
+    "version_title": "Wikisource Mishneh Torah",
+    "license": "CC-BY-SA",
+    "version_source": "http://he.wikisource.org/wiki/%D7%A8%D7%9E%D7%91%22%D7%9D_%D7%94%D7%A7%D7%93%D7%9E%D7%94_%D7%9C%D7%9E%D7%A9%D7%A0%D7%94_%D7%AA%D7%95%D7%A8%D7%94_(%D7%9E%D7%A1%D7%99%D7%A8%D7%AA_%D7%AA%D7%95%D7%A8%D7%94_%D7%A9%D7%91%D7%A2%D7%9C_%D7%A4%D7%94)",
+    "commercial_ok": true,
+    "sections": 18,
+    "example_ref": "Mishneh Torah, Transmission of the Oral Law",
+    "license_verdict": "ok"
   },
   {
     "source": "siddur",
@@ -30,7 +92,8 @@
     "version_source": "http://www.daat.ac.il/daat/sidurim/tohen3.htm",
     "commercial_ok": true,
     "sections": 218,
-    "example_ref": "Siddur Ashkenaz, Shabbat, Shacharit, Preparatory Prayers, Modeh Ani"
+    "example_ref": "Siddur Ashkenaz, Shabbat, Shacharit, Preparatory Prayers, Modeh Ani",
+    "license_verdict": "ok"
   },
   {
     "source": "siddur",
@@ -39,9 +102,10 @@
     "version_title": "Siddur Veshinantam ",
     "license": "unknown",
     "version_source": "https://www.nli.org.il/he/books/NNL_ALEPH003930085/NLI",
-    "commercial_ok": true,
+    "commercial_ok": false,
     "sections": 1,
-    "example_ref": "Siddur Ashkenaz, Weekday, Maariv, Additions for Motza'ei Shabbat, Veyiten Lekha"
+    "example_ref": "Siddur Ashkenaz, Weekday, Maariv, Additions for Motza'ei Shabbat, Veyiten Lekha",
+    "license_verdict": "unknown"
   },
   {
     "source": "siddur",
@@ -50,9 +114,10 @@
     "version_title": "Tanach with Nikkud",
     "license": "unknown",
     "version_source": "http://sefaria.org",
-    "commercial_ok": true,
+    "commercial_ok": false,
     "sections": 1,
-    "example_ref": "Siddur Ashkenaz, Weekday, Shacharit, Post Service, Ten Commandments"
+    "example_ref": "Siddur Ashkenaz, Weekday, Shacharit, Post Service, Ten Commandments",
+    "license_verdict": "unknown"
   },
   {
     "source": "siddur",
@@ -63,7 +128,8 @@
     "version_source": "https://www.nli.org.il/he/books/NNL_ALEPH002211687",
     "commercial_ok": true,
     "sections": 221,
-    "example_ref": "Siddur Ashkenaz, Weekday, Shacharit, Preparatory Prayers, Modeh Ani"
+    "example_ref": "Siddur Ashkenaz, Weekday, Shacharit, Preparatory Prayers, Modeh Ani",
+    "license_verdict": "ok"
   },
   {
     "source": "siddur",
@@ -74,7 +140,8 @@
     "version_source": "https://www.nli.org.il/he/books/NNL_ALEPH002211687",
     "commercial_ok": true,
     "sections": 7,
-    "example_ref": "Siddur Ashkenaz, Festivals, Rosh Chodesh, Hallel, Psalm 113"
+    "example_ref": "Siddur Ashkenaz, Festivals, Rosh Chodesh, Hallel, Psalm 113",
+    "license_verdict": "ok"
   },
   {
     "source": "siddur",
@@ -83,9 +150,10 @@
     "version_title": "Torat Emet 357",
     "license": "unknown",
     "version_source": "http://www.toratemetfreeware.com/index.html?downloads",
-    "commercial_ok": true,
+    "commercial_ok": false,
     "sections": 1,
-    "example_ref": "Siddur Ashkenaz, Shabbat, Kabbalat Shabbat, Bameh Madlikin"
+    "example_ref": "Siddur Ashkenaz, Shabbat, Kabbalat Shabbat, Bameh Madlikin",
+    "license_verdict": "unknown"
   },
   {
     "source": "talmud",
@@ -95,8 +163,9 @@
     "license": "CC-BY-NC",
     "version_source": "http://sefaria.org",
     "commercial_ok": false,
-    "sections": 3606,
-    "example_ref": "Berakhot 2a"
+    "sections": 5349,
+    "example_ref": "Berakhot 2a",
+    "license_verdict": "noncommercial"
   },
   {
     "source": "tanakh",
@@ -107,6 +176,7 @@
     "version_source": "https://he.wikisource.org/wiki/%D7%9E%D7%A9%D7%AA%D7%9E%D7%A9:Dovi/%D7%9E%D7%A7%D7%A8%D7%90_%D7%A2%D7%9C_%D7%A4%D7%99_%D7%94%D7%9E%D7%A1%D7%95%D7%A8%D7%94",
     "commercial_ok": true,
     "sections": 929,
-    "example_ref": "Genesis 1"
+    "example_ref": "Genesis 1",
+    "license_verdict": "ok"
   }
 ]

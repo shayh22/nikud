@@ -8,3 +8,13 @@ data/raw/
 data/corpus/*.jsonl
 models/checkpoints/
 *.log
+
+# תוצרי בנייה של הלקסיקון — נוצרים מחדש ב-`make lexicon quotes`.
+# רק homographs.json ו-overrides.json נכתבים ביד ונשמרים בגיט.
+lexicon/forms.json
+lexicon/bigrams.json
+lexicon/quotes.json
+lexicon/names.json
+lexicon/review_queue.json
+data/corpus/SUMMARY.json
+out/

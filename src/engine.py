@@ -314,6 +314,30 @@ def _load_json(path: Path, default):
 # --- בונה מנועים לפי שם, ל-evaluate.py --------------------------------
 
 
+# משאבים כבדים — אינדקס הציטוטים לבדו הוא מאות מגהבייט בזיכרון. הרצת
+# השוואה בונה כמה מנועים, ובלי המטמון הזה כל אחד היה טוען עותק משלו.
+_CACHE: dict[tuple, object] = {}
+
+
+def _cached(key: tuple, factory):
+    if key not in _CACHE:
+        _CACHE[key] = factory()
+    return _CACHE[key]
+
+
+def load_shared(lexicon_dir: Path = LEXICON):
+    """(לקסיקון, ציטוטים, הומוגרפים, חריגים) — נטענים פעם אחת לכל תיקייה."""
+    return (
+        _cached(("lexicon", lexicon_dir), lambda: Lexicon.load(lexicon_dir)),
+        _cached(("quotes", lexicon_dir),
+                lambda: QuoteIndex.load(lexicon_dir / "quotes.json")),
+        _cached(("homographs", lexicon_dir),
+                lambda: _load_json(lexicon_dir / "homographs.json", {})),
+        _cached(("overrides", lexicon_dir),
+                lambda: _load_json(lexicon_dir / "overrides.json", {})),
+    )
+
+
 def build_engine(spec: str, lexicon_dir: Path = LEXICON) -> Callable[[str], str]:
     """`null` | `lexicon` | `quotes` | `lexicon+quotes` | `dictabert` | `full`
     | `trained:<path>`.
@@ -322,18 +346,30 @@ def build_engine(spec: str, lexicon_dir: Path = LEXICON) -> Callable[[str], str]
     """
     if spec == "null":
         return _with_batch(lambda t: t, lambda ts: list(ts))
-    if spec == "lexicon":
-        eng = Engine.load(lexicon_dir=lexicon_dir, with_quotes=False)
-    elif spec == "quotes":
-        eng = Engine(quotes=QuoteIndex.load(lexicon_dir / "quotes.json"))
-    elif spec == "lexicon+quotes":
-        eng = Engine.load(lexicon_dir=lexicon_dir)
-    elif spec == "dictabert":
-        eng = Engine(model=DictaBertBackend())
-    elif spec == "full":
-        eng = Engine.load(lexicon_dir=lexicon_dir, with_model=_MODEL_ID)
+
+    lex, quotes, homographs, overrides = load_shared(lexicon_dir)
+    model_id = None
+    if spec == "full":
+        model_id = _MODEL_ID
     elif spec.startswith("trained:"):
-        eng = Engine.load(lexicon_dir=lexicon_dir, with_model=spec.split(":", 1)[1])
+        model_id = spec.split(":", 1)[1]
+    elif spec == "dictabert":
+        model_id = _MODEL_ID
+
+    model: ModelBackend = NullBackend()
+    if model_id:
+        model = _cached(("model", model_id), lambda: DictaBertBackend(model_id))
+
+    if spec == "lexicon":
+        eng = Engine(lexicon=lex, homographs=homographs, overrides=overrides)
+    elif spec == "quotes":
+        eng = Engine(quotes=quotes)
+    elif spec == "dictabert":
+        # המודל לבדו, בלי אף שכבה מעליו — זה מה שהבסיס מודד.
+        eng = Engine(model=model)
+    elif spec in ("lexicon+quotes", "full") or spec.startswith("trained:"):
+        eng = Engine(lexicon=lex, quotes=quotes, model=model,
+                     homographs=homographs, overrides=overrides)
     else:
         raise ValueError(f"מנוע לא מוכר: {spec}")
     return _with_batch(eng.nikud, eng.nikud_batch)

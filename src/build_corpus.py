@@ -16,6 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from classify import is_aramaic  # noqa: E402
 from clean import clean_line, is_fully_vocalized, split_sentences  # noqa: E402
+from fetch_sefaria import commercial_ok  # noqa: E402
 from hebrew import normalize, strip_nikud, words  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -62,7 +63,9 @@ def build(raw_path: Path, out_dir: Path, *, eval_dir: Path,
             sec = json.loads(line)
             stats["sections_read"] += 1
 
-            if commercial_safe and "NC" in (sec.get("license") or ""):
+            # אותה פסיקה שמייצרת את LICENSES.md, כדי שלא יהיו שני כללים
+            # שונים לאותה שאלה. רישיון לא ידוע נחשב אסור.
+            if commercial_safe and not commercial_ok(sec.get("license") or ""):
                 stats["sections_skipped_license"] += 1
                 continue
             if sec["ref"] in heldout:

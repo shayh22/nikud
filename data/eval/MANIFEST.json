@@ -1,0 +1,31 @@
+{
+  "sha256": "a9afd17b17bdf527ab44b527d35430be5969101fa52d93ee891e551f7db8c08f",
+  "n_sentences": 2000,
+  "n_words": 20599,
+  "by_source": {
+    "mishnah": 800,
+    "talmud": 800,
+    "siddur": 400
+  },
+  "by_layer": {
+    "mishnaic": 1123,
+    "aramaic": 477,
+    "liturgy": 400
+  },
+  "by_license": {
+    "Public Domain": 1044,
+    "CC-BY-NC": 744,
+    "unknown": 56,
+    "CC-BY": 156
+  },
+  "heldout_refs": 97,
+  "seed": 20260916,
+  "quota": {
+    "mishnah": 800,
+    "talmud": 800,
+    "siddur": 400
+  },
+  "shortfall": {},
+  "frozen": true,
+  "note": "סט מוקפא. אין להכניס אותו לאימון בשום מצב. build_corpus.py מסנן את heldout_refs.json."
+}

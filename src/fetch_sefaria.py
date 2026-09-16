@@ -250,6 +250,20 @@ def fetch_section(fetcher: Fetcher, ref: str, source: Source) -> FetchedSection 
 # --- רישיונות -----------------------------------------------------------
 
 
+def commercial_ok(license_name: str) -> bool:
+    """רישיון שמתיר שימוש מסחרי. 'לא ידוע' נחשב אסור עד שיוכח אחרת."""
+    return license_verdict(license_name) == "ok"
+
+
+def license_verdict(license_name: str) -> str:
+    name = (license_name or "").strip().lower()
+    if not name or name in ("unknown", "none"):
+        return "unknown"
+    if "-nc" in name or "noncommercial" in name or "non-commercial" in name:
+        return "noncommercial"
+    return "ok"
+
+
 class LicenseLog:
     """נכתב בזמן המשיכה, לא אחריה."""
 
@@ -275,7 +289,10 @@ class LicenseLog:
                 "version_title": sec.version_title,
                 "license": sec.license,
                 "version_source": sec.version_source,
-                "commercial_ok": src.commercial_ok,
+                # הדגל נגזר מהרישיון של המהדורה שנמשכה בפועל, לא מהקטלוג:
+                # לאותו מקור יכולות להיות מהדורות עם רישיונות שונים.
+                "commercial_ok": commercial_ok(sec.license) and src.commercial_ok,
+                "license_verdict": license_verdict(sec.license),
                 "sections": 1,
                 "example_ref": sec.ref,
             }
@@ -283,6 +300,14 @@ class LicenseLog:
             entry["sections"] += 1
 
     def flush(self) -> None:
+        # רשומות שנטענו מריצה ישנה עשויות לחסר את הפסיקה. מחשבים מחדש,
+        # כדי שקובץ הרישיונות לא יישאר שגוי אחרי שינוי בכללים.
+        for e in self.entries.values():
+            e["license_verdict"] = license_verdict(e.get("license", ""))
+            src = CATALOG.get(e["source"])
+            e["commercial_ok"] = e["license_verdict"] == "ok" and (
+                src.commercial_ok if src else True
+            )
         entries = sorted(self.entries.values(), key=lambda e: (e["source"], e["version_title"]))
         self.json_path.write_text(
             json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -296,21 +321,29 @@ class LicenseLog:
             "|---|---|---|---|---|---|",
         ]
         for e in entries:
-            ok = "כן" if e["commercial_ok"] else "**לא**"
+            verdict = e.get("license_verdict", "ok" if e["commercial_ok"] else "noncommercial")
+            ok = {"ok": "כן", "noncommercial": "**לא**", "unknown": "**לא ידוע**"}[verdict]
             rows.append(
                 f"| {e['title']} | {e['version_title']} | {e['license']} | "
                 f"{ok} | {e['sections']} | `{e['example_ref']}` |"
             )
-        nc = [e for e in entries if not e["commercial_ok"]]
+        nc = [e for e in entries if e.get("license_verdict") == "noncommercial"]
+        unknown = [e for e in entries if e.get("license_verdict") == "unknown"]
+        if nc or unknown:
+            rows += ["", "## אזהרה", ""]
         if nc:
+            rows += ["המהדורות הבאות אינן מתאימות למוצר או שירות מסחרי:", ""]
+            rows += [f"- **{e['title']}** ({e['version_title']}) — {e['license']}"
+                     for e in nc]
+            rows.append("")
+        if unknown:
             rows += [
-                "",
-                "## אזהרה",
-                "",
-                "המקורות הבאים אינם מתאימים למוצר או שירות מסחרי:",
+                "למהדורות הבאות ספריא לא החזירה רישיון. הן נחשבות אסורות "
+                "לשימוש מסחרי עד שיוכח אחרת:",
                 "",
             ]
-            rows += [f"- **{e['title']}** ({e['version_title']}) — {e['license']}" for e in nc]
+            rows += [f"- **{e['title']}** ({e['version_title']})" for e in unknown]
+            rows.append("")
             rows += [
                 "",
                 "לבניית מסלול מסחרי: `python src/fetch_sefaria.py --commercial-safe`.",

@@ -251,8 +251,29 @@ def is_acronym(token: str) -> bool:
 # --- השוואה -------------------------------------------------------------
 
 
-def word_matches(gold: str, pred: str, *, ignore_shin: bool = False) -> bool:
-    """האם שתי צורות זהות בניקוד. ignore_shin מבודד את בעיית שי"ן/שי"ן שמאלית."""
+QAMATS = "\u05b8"
+QAMATS_QATAN = "\u05c7"
+BEGADKEFAT = frozenset("\u05d1\u05d2\u05d3\u05db\u05e4\u05ea")  # בגדכפ"ת
+
+
+def _fold_vowel(vowel: str, lenient: bool) -> str:
+    """קמץ קטן וקמץ הם אותו סימן כתוב. יוניקוד מבדיל ביניהם לפי הקריאה,
+    ומהדורות שונות מקודדות אותו אחרת. במצב סלחני הם נחשבים שווים."""
+    if lenient and vowel == QAMATS_QATAN:
+        return QAMATS
+    return vowel
+
+
+def word_matches(gold: str, pred: str, *, ignore_shin: bool = False,
+                 lenient: bool = False) -> bool:
+    """האם שתי צורות זהות בניקוד.
+
+    ignore_shin מבודד את בעיית שי"ן/שי"ן שמאלית.
+    lenient מוותר על שתי הבחנות שהן עניין של מוסכמת מהדורה ולא של ניקוד:
+      * קמץ קטן מול קמץ (U+05C7 מול U+05B8)
+      * דגש קל באות בגדכפ"ת — מהדורות רבות אינן מסמנות אותו
+    זהו מדד מדווח בנפרד, לא החלפה של המדד המחמיר.
+    """
     g = to_slots(normalize(gold))
     p = to_slots(normalize(pred))
     if len(g) != len(p):
@@ -260,8 +281,11 @@ def word_matches(gold: str, pred: str, *, ignore_shin: bool = False) -> bool:
     for gs, ps in zip(g, p):
         if gs.base != ps.base:
             return False
-        if gs.vowel != ps.vowel or gs.dagesh != ps.dagesh:
+        if _fold_vowel(gs.vowel, lenient) != _fold_vowel(ps.vowel, lenient):
             return False
+        if gs.dagesh != ps.dagesh:
+            if not (lenient and gs.base in BEGADKEFAT):
+                return False
         if not ignore_shin and gs.shin != ps.shin:
             return False
     return True
