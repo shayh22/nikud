@@ -17,6 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from hebrew import (  # noqa: E402
     DAGESH,
+    fix_mater_vowels,
     HEBREW_LETTERS,
     SHIN_DOT,
     SIN_DOT,
@@ -110,7 +111,9 @@ def apply_labels(text: str, nikud_ids: list[int], shin_ids: list[int],
         if ch == SHIN and 0 <= shin_ids[i] < len(shin_classes):
             dot = shin_classes[shin_ids[i]]
         out.append(ch + dot + mark)
-    return normalize("".join(out))
+    # המודל מניח תנועה על האות שלפני אם הקריאה. כשהוי"ו כתובה בפועל
+    # התנועה שייכת לה עצמה — ראה fix_mater_vowels.
+    return fix_mater_vowels("".join(out))
 
 
 # --- קידוד -------------------------------------------------------------

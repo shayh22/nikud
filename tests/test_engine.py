@@ -519,5 +519,41 @@ class TestDocxHaserRedistribution(unittest.TestCase):
         self.assertEqual("".join(pieces), "שָׁלוֹם")
 
 
+class TestMaterVowelPlacement(unittest.TestCase):
+    """תנועה שהונחה על האות שלפני וי"ו כתובה שייכת לוי"ו עצמה.
+
+    המודל מסמן וי"ו כאם קריאה ומניח את התנועה לפניה — נכון לכתיב חסר,
+    שגוי כשהוי"ו כתובה. בספר זה יצר 897 שגיאות.
+    """
+
+    def fix(self, text):
+        return h.fix_mater_vowels(text)
+
+    def test_qubuts_becomes_shuruk(self):
+        self.assertEqual(self.fix("אֲרֻוכָּה"), "אֲרוּכָּה")
+        self.assertEqual(self.fix("נְקֻודָּה"), "נְקוּדָּה")
+
+    def test_holam_becomes_holam_male(self):
+        self.assertEqual(self.fix("בְּאֹופֶן"), "בְּאוֹפֶן")
+        self.assertEqual(self.fix("קֹודֶם"), "קוֹדֶם")
+
+    def test_correct_forms_are_untouched(self):
+        for w in ["שָׁלוֹם", "הוּא", "מִצְוָה", "עָלָיו", "תּוֹרָה", "כֻּלָּם"]:
+            self.assertEqual(self.fix(w), h.normalize(w))
+
+    def test_consonantal_vav_is_untouched(self):
+        """וי"ו שנושאת תנועה או שווא היא עיצור, ולא נוגעים בה."""
+        for w in ["מִצְוָה", "עֲוֹן", "וְלֹא", "תִּקְוָה"]:
+            self.assertEqual(self.fix(w), h.normalize(w))
+
+    def test_skeleton_never_changes(self):
+        for w in ["אֲרֻוכָּה", "בְּאֹופֶן", "קֹודֶם", "מְסֻויֶּמֶת", "לִנְסֹועַ"]:
+            self.assertEqual(h.strip_nikud(self.fix(w)), h.strip_nikud(w))
+
+    def test_identity_still_holds(self):
+        src = h.strip_nikud("אֲרֻוכָּה בְּאֹופֶן")
+        self.assertFalse(h.identity_diff(src, self.fix("אֲרֻוכָּה בְּאֹופֶן")))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

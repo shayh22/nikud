@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Iterator, Sequence
 
 # --- טווחי יוניקוד ------------------------------------------------------
@@ -207,6 +207,36 @@ def slots_to_text(slots: Sequence[LetterSlot]) -> str:
         if s.vowel:
             out.append(s.vowel)
     return unicodedata.normalize("NFC", "".join(out))
+
+
+def fix_mater_vowels(text: str) -> str:
+    """מעביר תנועה שהונחה על האות שלפני וי"ו — אל הוי"ו עצמה.
+
+    המודל מסמן וי"ו ככתיב מלא (`<MAT_LECT>`) ומניח את התנועה על האות
+    שלפניה — נכון לכתיב חסר, שגוי כשהוי"ו כתובה בפועל:
+
+        אֲרֻוכָּה → אֲרוּכָּה     קובוץ → שורוק
+        בְּאֹופֶן → בְּאוֹפֶן     חולם  → חולם מלא
+
+    הכלל בטוח: וי"ו שאינה נושאת דבר — לא תנועה, לא שווא ולא דגש —
+    אינה יכולה להיות עיצור, ולכן היא בהכרח אם קריאה. שלד העיצורים
+    אינו משתנה, ולכן בדיקת הזהות ממשיכה להתקיים.
+    """
+    slots = to_slots(normalize(text))
+    changed = False
+    for i in range(len(slots) - 1):
+        cur, nxt = slots[i], slots[i + 1]
+        if nxt.base != "\u05d5" or nxt.vowel or nxt.dagesh or nxt.shin:
+            continue
+        if cur.vowel == "\u05bb":        # קובוץ → שורוק
+            slots[i] = replace(cur, vowel="")
+            slots[i + 1] = replace(nxt, dagesh=True)
+            changed = True
+        elif cur.vowel == "\u05b9":      # חולם → חולם מלא
+            slots[i] = replace(cur, vowel="")
+            slots[i + 1] = replace(nxt, vowel="\u05b9")
+            changed = True
+    return slots_to_text(slots) if changed else normalize(text)
 
 
 def canonical(text: str) -> str:
