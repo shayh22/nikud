@@ -327,5 +327,197 @@ class TestDocxHyperlinkRuns(unittest.TestCase):
         self.assertFalse(h.identity_diff(source, para.text))
 
 
+class TestKtivHaser(unittest.TestCase):
+    """שכבת הכתיב החסר — השכבה היחידה שמורידה אותיות."""
+
+    def setUp(self):
+        import ktiv
+        from build_lexicon import Lexicon
+
+        # לקסיקון מזערי, כדי שהבדיקות לא יהיו תלויות בקורפוס שנבנה.
+        self.lex = Lexicon(
+            {"meta": {}, "forms": {
+                "חבור": {"category": "unambiguous", "best": "חִבּוּר", "count": 263,
+                         "ratio": 0.99, "variants": [["חִבּוּר", 260], ["חָבוֹר", 3]]},
+                "חיבור": {"category": "unambiguous", "best": "חִיבּוּר", "count": 38,
+                          "ratio": 1.0, "variants": [["חִיבּוּר", 38]]},
+                "כלם": {"category": "context", "best": "כֻּלָּם", "count": 260,
+                        "ratio": 0.89, "variants": [["כֻּלָּם", 232], ["כֻלָּם", 28]]},
+                "אש": {"category": "unambiguous", "best": "אֵשׁ", "count": 269,
+                       "ratio": 1.0, "variants": [["אֵשׁ", 269]]},
+                "הא": {"category": "unambiguous", "best": "הָא", "count": 5862,
+                       "ratio": 0.99, "variants": [["הָא", 5819], ["הִא", 1]]},
+                "תקון": {"category": "context", "best": "תַּקּוּן", "count": 55,
+                         "ratio": 0.42, "variants": [["תַּקּוּן", 23], ["תִקּוּן", 17],
+                                                     ["תִּקּוּן", 15]]},
+            }},
+            {}, set(),
+        )
+        self.conv = ktiv.HaserConverter(self.lex)
+
+    def test_hiriq_yod_is_dropped(self):
+        got = self.conv.convert("חִיבּוּר")
+        self.assertIsNotNone(got)
+        self.assertEqual(got.form, "חִבּוּר")
+        self.assertEqual(got.letters, ("י",))
+
+    def test_shuruk_vav_becomes_qubuts(self):
+        got = self.conv.convert("כּוּלָּם")
+        self.assertIsNotNone(got)
+        self.assertEqual(got.form, "כֻּלָּם")
+
+    def test_prefixed_word_uses_stem_evidence(self):
+        """הַחִיבּוּר אינו בלקסיקון, חִבּוּר כן. הראיה מהגזע מספיקה."""
+        got = self.conv.convert("הַחִיבּוּר")
+        self.assertIsNotNone(got)
+        self.assertEqual(got.form, "הַחִבּוּר")
+
+    def test_different_word_is_not_dropped(self):
+        """אִישׁ → אֵשׁ הוא מילה אחרת. הצירה פוסל את ההורדה."""
+        self.assertIsNone(self.conv.convert("אִישׁ"))
+
+    def test_rare_matching_variant_is_not_enough(self):
+        """הָא בקמץ; הִא בחיריק מופיעה פעם אחת. פעם אחת אינה ראיה."""
+        self.assertIsNone(self.conv.convert("הִיא"))
+
+    def test_word_final_yod_is_never_dropped(self):
+        self.assertIsNone(self.conv.convert("רַבִּי"))
+
+    def test_consonantal_yod_is_never_dropped(self):
+        """יו"ד שנושאת ניקוד משלה אינה אם קריאה."""
+        self.assertIsNone(self.conv.convert("חַיִּים"))
+
+    def test_dagesh_is_not_lost_to_an_edition_variant(self):
+        """תִקּוּן×17 שכיחה מ-תִּקּוּן×15, אבל הן אותה צורה. הדגש נשמר."""
+        got = self.conv.convert("תִּיקּוּן")
+        self.assertIsNotNone(got)
+        self.assertEqual(got.form, "תִּקּוּן")
+
+    def test_conversion_is_restorable(self):
+        """הערובה שמחליפה את בדיקת הזהות: ההורדה הפיכה."""
+        import ktiv
+
+        got = self.conv.convert("הַחִיבּוּר")
+        rebuilt = ktiv.restore(h.strip_nikud(got.form), got.removed, got.letters)
+        self.assertEqual(rebuilt, h.strip_nikud("הַחִיבּוּר"))
+
+    def test_unrestorable_conversion_is_rejected(self):
+        import ktiv
+
+        bogus = ktiv.Conversion("חִבּוּר", (9,), ("י",), 100)
+        with self.assertRaises(ktiv.RestorationError):
+            ktiv.assert_restorable("חִיבּוּר", bogus)
+
+
+class TestEngineKtivMode(unittest.TestCase):
+    def make(self, ktiv_mode):
+        from build_lexicon import Lexicon
+
+        lex = Lexicon(
+            {"meta": {}, "forms": {
+                "חיבור": {"category": "unambiguous", "best": "חִיבּוּר", "count": 38,
+                          "ratio": 1.0, "variants": [["חִיבּוּר", 38]]},
+                "חבור": {"category": "unambiguous", "best": "חִבּוּר", "count": 263,
+                         "ratio": 0.99, "variants": [["חִבּוּר", 260]]},
+            }},
+            {}, set(),
+        )
+        return Engine(lexicon=lex, ktiv=ktiv_mode)
+
+    def test_male_mode_preserves_identity(self):
+        eng = self.make("male")
+        res = eng.vocalize("חיבור")
+        self.assertEqual(res.text, "חִיבּוּר")
+        self.assertEqual(res.removals, [])
+        self.assertFalse(h.identity_diff("חיבור", res.text))
+
+    def test_haser_mode_drops_and_logs(self):
+        eng = self.make("haser")
+        res = eng.vocalize("חיבור")
+        self.assertEqual(res.text, "חִבּוּר")
+        self.assertEqual(len(res.removals), 1)
+        self.assertEqual(res.removals[0]["letters"], ["י"])
+        self.assertEqual(res.removed_letters, 1)
+
+    def test_segments_reconstruct_both_sides(self):
+        eng = self.make("haser")
+        res = eng.vocalize("על חיבור זה")
+        self.assertEqual("".join(a for a, _b in res.segments), "על חיבור זה")
+        self.assertEqual("".join(b for _a, b in res.segments), res.text)
+
+    def test_unknown_ktiv_mode_is_rejected(self):
+        with self.assertRaises(ValueError):
+            self.make("something")
+
+
+class TestKtivRoundTrip(unittest.TestCase):
+    """to_male ו-mechanical חייבות להיות הופכיות. בלי זה המדידה חסרת ערך."""
+
+    CASES = ["חִבּוּר", "תְּפִלָּה", "כֻּלָּם", "שֻׁלְחָן", "עִקָּר", "תִּקּוּן"]
+
+    @staticmethod
+    def inserted(gold_skeleton, male_skeleton):
+        """האינדקסים שבהם to_male הוסיפה אות."""
+        out, i = [], 0
+        for j, ch in enumerate(male_skeleton):
+            if i < len(gold_skeleton) and gold_skeleton[i] == ch:
+                i += 1
+            else:
+                out.append(j)
+        return tuple(out)
+
+    def test_male_then_mechanical_restores_the_original(self):
+        """מורידים בדיוק את מה ש-to_male הוסיפה, ומקבלים את המקור.
+
+        לא כל אם קריאה בצורה המלאה נוספה על ידי to_male: ב-חִיבּוּר גם
+        הוי"ו היא אם קריאה, אבל היא הייתה שם מלכתחילה.
+        """
+        import ktiv
+
+        for gold in self.CASES:
+            male = ktiv.to_male(gold)
+            self.assertNotEqual(male, gold, f"{gold}: to_male לא שינה דבר")
+            added = self.inserted(h.strip_nikud(gold), h.strip_nikud(male))
+            self.assertTrue(added, f"{male}: לא זוהתה תוספת")
+            maters = ktiv.mater_positions(male)
+            for pos in added:
+                self.assertIn(pos, maters, f"{male}: {pos} לא זוהה כאם קריאה")
+            back = ktiv.mechanical(male, added, tuple(maters[p] for p in added))
+            self.assertEqual(h.canonical(back), h.canonical(gold))
+
+    def test_male_leaves_alone_what_should_not_change(self):
+        import ktiv
+
+        for word in ["בַּיִת", "לָרִאשׁוֹן", "וְיִגְאֹל", "רַבִּי"]:
+            self.assertEqual(ktiv.to_male(word), word)
+
+
+class TestDocxHaserRedistribution(unittest.TestCase):
+    """חלוקה ל-runs כשאותיות יורדות — שם ספירת השלד כבר לא תקפה."""
+
+    def redistribute_segments(self, segments, runs):
+        sys.path.insert(0, str(ROOT / "pipeline"))
+        from docx_pipeline import redistribute_segments
+
+        return redistribute_segments(segments, runs)
+
+    def test_output_is_fully_preserved(self):
+        segments = [("על ", "עַל "), ("חיבור", "חִבּוּר"), (" זה", " זֶה")]
+        pieces = self.redistribute_segments(segments, ["על ", "חיבור", " זה"])
+        self.assertEqual("".join(pieces), "עַל חִבּוּר זֶה")
+
+    def test_run_boundary_inside_a_shortened_word(self):
+        """גבול run באמצע מילה שהתקצרה — הטקסט נשמר, העיצוב מוזז."""
+        segments = [("חיבור", "חִבּוּר")]
+        pieces = self.redistribute_segments(segments, ["חיב", "ור"])
+        self.assertEqual("".join(pieces), "חִבּוּר")
+        self.assertEqual(len(pieces), 2)
+
+    def test_more_runs_than_segments(self):
+        segments = [("שלום", "שָׁלוֹם")]
+        pieces = self.redistribute_segments(segments, ["שלום", "", ""])
+        self.assertEqual("".join(pieces), "שָׁלוֹם")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

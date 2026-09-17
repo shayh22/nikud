@@ -62,6 +62,28 @@ def redistribute(vocalized: str, run_texts: list[str]) -> list[str]:
     return out
 
 
+def redistribute_segments(segments: list[tuple[str, str]],
+                          run_texts: list[str]) -> list[str]:
+    """חלוקה ל-runs כשהפלט אינו זהה למקור בשלד — כלומר במצב כתיב חסר.
+
+    `redistribute` סופרת תווי שלד וסומכת על כך שמספרם נשמר. כשאמות
+    קריאה יורדות זה כבר לא נכון, ולכן כאן ההליכה היא לפי מקטעי
+    (מקור, פלט): כל מקטע נכנס כשלמות ל-run שבו הוא מתחיל. גבול run
+    שנופל באמצע מילה מזיז כמה תווים בין שני קטעי עיצוב, ולא מאבד טקסט.
+    """
+    budgets = [len(strip_nikud(normalize(t))) for t in run_texts]
+    out = [""] * len(run_texts)
+    ri = 0
+    used = 0
+    for src, dst in segments:
+        while ri < len(budgets) - 1 and used >= budgets[ri]:
+            ri += 1
+            used = 0
+        out[ri] += dst
+        used += len(strip_nikud(normalize(src)))
+    return out
+
+
 def process(in_path: Path, out_path: Path, *, engine: Engine,
             max_paragraphs: int | None = None, max_chars: int | None = None,
             report_path: Path | None = None, batch_size: int = 24,
@@ -134,16 +156,33 @@ def process(in_path: Path, out_path: Path, *, engine: Engine,
             skipped.append({"paragraph": idx, "text": text[:80]})
             continue
 
-        pieces = redistribute(result.text, run_texts)
-        if "".join(strip_nikud(p) for p in pieces) != strip_nikud(normalized):
+        if result.removals:
+            # במצב כתיב חסר השלד משתנה בכוונה, ולכן החלוקה לפי מקטעים.
+            pieces = redistribute_segments(result.segments, run_texts)
+            ok = "".join(pieces) == result.text
+        else:
+            pieces = redistribute(result.text, run_texts)
+            ok = "".join(strip_nikud(p) for p in pieces) == strip_nikud(normalized)
+        if not ok:
             failures.append({"paragraph": idx, "reason": "חלוקת runs נכשלה"})
             continue
         for run, piece in zip(runs, pieces):
             run.text = piece
 
-        # הקו האדום, אחרי הכתיבה ולא רק לפניה. הבדיקה שלמעלה רצה על מה
-        # שהמנוע החזיר; זו רצה על מה שבאמת יושב עכשיו במסמך.
-        if identity_diff(text, para.text):
+        # הבדיקה אחרי הכתיבה, ולא רק לפניה. זו שרצה על מה שבאמת יושב
+        # עכשיו במסמך, ולא על מה שהמנוע החזיר.
+        if result.removals:
+            # כתיב חסר: הפסקה שנכתבה חייבת להיות בדיוק מה שהמנוע אישר,
+            # והמנוע כבר אימת שההורדות הפיכות (assert_restorable_text).
+            if para.text != result.text:
+                failures.append(
+                    {"paragraph": idx, "reason": "הפסקה שנכתבה אינה מה שהמנוע אישר",
+                     "text": text[:80]}
+                )
+                continue
+            stats["letters_removed"] += result.removed_letters
+            stats["words_shortened"] += len(result.removals)
+        elif identity_diff(text, para.text):
             failures.append(
                 {"paragraph": idx, "reason": "הפסקה שנכתבה אינה זהה למקור",
                  "text": text[:80]}
@@ -177,6 +216,9 @@ def process(in_path: Path, out_path: Path, *, engine: Engine,
         "paragraphs_skipped_unmappable": stats["paragraphs_skipped_unmappable"],
         "skipped": skipped,
         "paragraphs_nfc_normalized": stats["paragraphs_nfc_normalized"],
+        "ktiv": engine.ktiv,
+        "words_shortened": stats["words_shortened"],
+        "letters_removed": stats["letters_removed"],
         "words": total_words,
         "by_layer": dict(sources),
         "coverage": {
@@ -211,18 +253,22 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--report", type=Path, default=None)
     p.add_argument("--batch-size", type=int, default=24,
                    help="פסקאות לאצווה במודל")
+    p.add_argument("--ktiv", choices=("male", "haser"), default="male",
+                   help="haser מוריד אמות קריאה כשהקורפוס תומך. "
+                        "משנה אותיות — ראה src/ktiv.py")
     args = p.parse_args(argv)
 
     ld = args.lexicon_dir
     if args.engine == "full":
-        eng = Engine.load(lexicon_dir=ld,
+        eng = Engine.load(lexicon_dir=ld, ktiv=args.ktiv,
                           with_model="dicta-il/dictabert-large-char-menaked")
     elif args.engine.startswith("trained:"):
-        eng = Engine.load(lexicon_dir=ld, with_model=args.engine.split(":", 1)[1])
+        eng = Engine.load(lexicon_dir=ld, ktiv=args.ktiv,
+                          with_model=args.engine.split(":", 1)[1])
     elif args.engine == "lexicon":
-        eng = Engine.load(lexicon_dir=ld, with_quotes=False)
+        eng = Engine.load(lexicon_dir=ld, ktiv=args.ktiv, with_quotes=False)
     else:
-        eng = Engine.load(lexicon_dir=ld)
+        eng = Engine.load(lexicon_dir=ld, ktiv=args.ktiv)
 
     summary = process(args.input, args.output, engine=eng,
                       max_paragraphs=args.max_paragraphs,

@@ -35,6 +35,7 @@ from hebrew import (  # noqa: E402
     split_tokens,
     strip_nikud,
 )
+from ktiv import HaserConverter, restore  # noqa: E402
 from quotes import QuoteIndex  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -54,6 +55,10 @@ SOURCES = (
     "unresolved",
 )
 
+# מאילו שכבות מותר לכתיב החסר לקחת מילה. חריגים, כללים שנכתבו ביד,
+# ציטוטים וטקסט שהיה מנוקד במקור — כולם סמכות גבוהה יותר, ולא נוגעים בהם.
+HASER_ELIGIBLE = frozenset({"model", "lexicon", "bigram"})
+
 
 @dataclass
 class Decision:
@@ -68,6 +73,11 @@ class VocalizeResult:
     text: str
     decisions: list[Decision] = field(default_factory=list)
     unresolved: list[str] = field(default_factory=list)
+    # (מקטע מקור, מקטע פלט) לכל חלק בטקסט, כולל פיסוק ורווחים. שרשור
+    # הצד הראשון מחזיר את המקור; שרשור השני מחזיר את הפלט.
+    segments: list[tuple[str, str]] = field(default_factory=list)
+    # יומן ההורדות של שכבת הכתיב החסר. ריק כשהשכבה כבויה.
+    removals: list[dict] = field(default_factory=list)
 
     @property
     def by_source(self) -> dict[str, int]:
@@ -80,6 +90,10 @@ class VocalizeResult:
     def review_words(self) -> list[str]:
         """מילים שהמנוע לא היה בטוח בהן. הפלט של שלב 6."""
         return [d.form for d in self.decisions if not d.confident]
+
+    @property
+    def removed_letters(self) -> int:
+        return sum(len(r["letters"]) for r in self.removals)
 
 
 # --- שכבת המודל ---------------------------------------------------------
@@ -124,6 +138,7 @@ class Engine:
         homographs: dict | None = None,
         overrides: dict | None = None,
         keep_existing_nikud: bool = True,
+        ktiv: str = "male",
     ):
         self.lexicon = lexicon or Lexicon({}, {}, set())
         self.quotes = quotes
@@ -131,6 +146,15 @@ class Engine:
         self.homographs = homographs or {}
         self.overrides = overrides or {}
         self.keep_existing_nikud = keep_existing_nikud
+        # "male" — לא נוגעים באותיות, והקו האדום המקורי בתוקף.
+        # "haser" — אמות קריאה יורדות כשהקורפוס תומך, וכל הורדה מתועדת.
+        if ktiv not in ("male", "haser"):
+            raise ValueError(f"כתיב לא מוכר: {ktiv}. male או haser.")
+        self.ktiv = ktiv
+        self.haser = (
+            HaserConverter(self.lexicon) if ktiv == "haser" and self.lexicon.forms
+            else None
+        )
 
     # --- בנייה ---------------------------------------------------------
 
@@ -245,6 +269,7 @@ class Engine:
         # הרכבה. כל צורה נבדקת מול השלד שלה לפני שהיא נכנסת.
         out_parts = list(p for p, _ in parts)
         unresolved: list[str] = []
+        removals: list[dict] = []
         for i, part_i in enumerate(word_idx):
             d = decisions[i]
             if d.source == "unresolved":
@@ -261,8 +286,31 @@ class Engine:
                 continue
             out_parts[part_i] = d.form
 
-        result_text = assert_identity(source, "".join(out_parts))
-        return VocalizeResult(result_text, decisions, unresolved)
+            # 7. כתיב חסר — הורדת אם קריאה. השכבה היחידה שמשנה אותיות,
+            # ולכן היא מפורשת, נפרדת, ומתועדת. ראה src/ktiv.py.
+            if self.haser is not None and d.source in HASER_ELIGIBLE:
+                conv = self.haser.convert(d.form)
+                if conv is not None:
+                    out_parts[part_i] = conv.form
+                    decisions[i] = Decision(conv.form, "haser", True,
+                                            f"הורד {''.join(conv.letters)} מ-{d.source}")
+                    removals.append({
+                        "word": originals[i],
+                        "form": conv.form,
+                        "positions": list(conv.removed),
+                        "letters": list(conv.letters),
+                        "from_layer": d.source,
+                    })
+
+        segments = [(src, out_parts[i]) for i, (src, _w) in enumerate(parts)]
+        result_text = "".join(out_parts)
+        if removals:
+            # הקו האדום המקורי אינו חל — אותיות ירדו בכוונה. במקומו:
+            # החזרת כל ההורדות המתועדות חייבת לשחזר את המקור בדיוק.
+            assert_restorable_text(source, segments, removals)
+        else:
+            assert_identity(source, result_text)
+        return VocalizeResult(result_text, decisions, unresolved, segments, removals)
 
     # --- שכבת המודל, מבודדת ---------------------------------------------
 
@@ -283,6 +331,41 @@ class Engine:
             if i in frozen or strip_nikud(pw) != skeletons[i]:
                 continue
             decisions[i] = Decision(pw, "model")
+
+
+class RestorationError(AssertionError):
+    """ההורדות אינן משחזרות את המקור."""
+
+
+def assert_restorable_text(source: str, segments: list[tuple[str, str]],
+                           removals: list[dict]) -> None:
+    """הערובה של מצב `haser`, במקום בדיקת הזהות.
+
+    שרשור מקטעי המקור חייב להחזיר את המקור, וכל מקטע פלט שממנו הורדו
+    אותיות חייב לחזור לשלד המקורי כשמחזירים אותן. ההורדה היא טרנספורמציה
+    מתועדת והפיכה — לא אובדן טקסט.
+    """
+    if "".join(src for src, _out in segments) != source:
+        raise RestorationError("מקטעי המקור אינם משחזרים את הטקסט שנכנס.")
+
+    by_word: dict[str, dict] = {r["form"]: r for r in removals}
+    for src, out in segments:
+        src_skel = strip_nikud(src)
+        out_skel = strip_nikud(out)
+        if out_skel == src_skel:
+            continue
+        record = by_word.get(out)
+        if record is None:
+            raise RestorationError(
+                f"מקטע שהשתנה בלי תיעוד: {src!r} → {out!r}"
+            )
+        rebuilt = restore(out_skel, tuple(record["positions"]), tuple(record["letters"]))
+        if rebuilt != src_skel:
+            raise RestorationError(
+                "החזרת האותיות אינה משחזרת את המקור.\n"
+                f"  מקור:  {src_skel}\n"
+                f"  שוחזר: {rebuilt}"
+            )
 
 
 def _resolve_homograph(rule, skeletons: list[str], i: int) -> str | None:
@@ -372,6 +455,27 @@ def build_engine(spec: str, lexicon_dir: Path = LEXICON) -> Callable[[str], str]
                      homographs=homographs, overrides=overrides)
     else:
         raise ValueError(f"מנוע לא מוכר: {spec}")
+    return _with_batch(eng.nikud, eng.nikud_batch)
+
+
+def build_engine_ktiv(spec: str, ktiv: str = "male",
+                      lexicon_dir: Path = LEXICON) -> Callable[[str], str]:
+    """כמו build_engine, עם בחירת כתיב. `male` לא נוגע באותיות."""
+    if spec == "null":
+        return _with_batch(lambda t: t, lambda ts: list(ts))
+    lex, quotes, homographs, overrides = load_shared(lexicon_dir)
+    model: ModelBackend = NullBackend()
+    if spec in ("full", "dictabert") or spec.startswith("trained:"):
+        model_id = spec.split(":", 1)[1] if spec.startswith("trained:") else _MODEL_ID
+        model = _cached(("model", model_id), lambda: DictaBertBackend(model_id))
+    eng = Engine(
+        lexicon=lex if spec != "dictabert" else None,
+        quotes=quotes if spec not in ("lexicon", "dictabert") else None,
+        model=model,
+        homographs=homographs if spec != "dictabert" else None,
+        overrides=overrides if spec != "dictabert" else None,
+        ktiv=ktiv,
+    )
     return _with_batch(eng.nikud, eng.nikud_batch)
 
 
