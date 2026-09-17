@@ -243,13 +243,18 @@ class HaserConverter:
     def __init__(self, lexicon, *, drop_hiriq_yod: bool = True,
                  drop_shuruk_vav: bool = True, drop_holam_vav: bool = False,
                  min_support: int = 3, min_ratio: float = 0.50,
-                 min_vs_male: float = 0.35):
+                 strong_support: int = 25, min_vs_male: float = 0.35):
         self.lexicon = lexicon
         self.drop_yod = drop_hiriq_yod
         self.drop_vav = drop_shuruk_vav
         self.allow_holam = drop_holam_vav
         self.min_support = min_support
         self.min_ratio = min_ratio
+        # מדד היחס שואל "איזה חלק מהמופעים של השלד תומך בהורדה", וזו
+        # השאלה הלא נכונה כששלד אחד מארח שתי מילים. `אסור` מארח את
+        # `אָסוּר` השכיח ואת `אִסּוּר`; ל-158 מופעים של השני יש משקל ראייתי
+        # מלא, גם אם הם 5% מהשלד. לכן תמיכה מוחלטת חזקה עוקפת את היחס.
+        self.strong_support = strong_support
         # כמה הכתיב החסר צריך להיות נפוץ ביחס לכתיב המלא של אותה מילה.
         # זה מה שמבדיל בין `חיבור` (שהמסורת כותבת חסר) לבין `ציצית`
         # (שהמסורת כותבת מלא, ו`ציצת` שבקורפוס היא צורת הסמיכות).
@@ -334,7 +339,8 @@ class HaserConverter:
         support, total, form = _supporting_variants(entry, subset, vowels)
         if form is None or support < self.min_support:
             return 0, None
-        if total and support / total < self.min_ratio:
+        if (total and support / total < self.min_ratio
+                and support < self.strong_support):
             return 0, None
         # הכתיב המלא של אותה מילה — כמה הוא עצמו מבוסס בקורפוס.
         male_entry = self.lexicon.forms.get(skeleton)
