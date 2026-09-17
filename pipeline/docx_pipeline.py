@@ -18,7 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from engine import Engine  # noqa: E402
+from engine import Engine, assert_restorable_text  # noqa: E402
 from hebrew import identity_diff, is_hebrew, normalize, strip_nikud  # noqa: E402
 
 
@@ -141,10 +141,19 @@ def process(in_path: Path, out_path: Path, *, engine: Engine,
 
         result = engine.vocalize(text, paragraph_id=f"p{idx}",
                                  model_prediction=predicted)
-        diff = identity_diff(text, result.text)
-        if diff:
-            # לא אמור לקרות — vocalize כבר אוכף זאת. כאן זו רשת ביטחון שנייה.
-            failures.append({"paragraph": idx, "text": text[:80]})
+        # רשת ביטחון שנייה. איזו ערובה נבדקת תלוי במצב הכתיב: במצב male
+        # הפלט חייב להיות זהה למקור, ובמצב haser אותיות ירדו בכוונה
+        # והדרישה היא שההורדות מתועדות ומחזירות את המקור.
+        if result.removals:
+            try:
+                assert_restorable_text(normalized, result.segments, result.removals)
+            except AssertionError as exc:
+                failures.append({"paragraph": idx, "reason": str(exc),
+                                 "text": text[:80]})
+                continue
+        elif identity_diff(text, result.text):
+            failures.append({"paragraph": idx, "reason": "הפלט אינו זהה למקור",
+                             "text": text[:80]})
             continue
 
         runs = all_runs(para)
